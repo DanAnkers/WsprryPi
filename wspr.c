@@ -19,15 +19,7 @@ Encoding process is in 5 steps:
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
-#include "uart1.h"		// terminal UART definitions
-#include "SDR_Cube.h"		// board & processor specific definitions
-#include "SDR_Cube_globals.h"	// global data
 #include "wspr.h"		// wspr definitions and functions
-
-char wspr_message[20];		// user beacon message to encode
-unsigned char wspr_symbols[162] = { 0 },	// contains 162 finals symbols
-
-  wspr_encoded = 0;		// to know that a message has been encoded
 
 void
 Code_msg (char usr_message[], unsigned long int *N, unsigned long int *M)
@@ -35,13 +27,9 @@ Code_msg (char usr_message[], unsigned long int *N, unsigned long int *M)
   unsigned long int n, m;
   unsigned int i, j, power, callsign_length;
 
-  char callsign[7] = { 0 },	// callsign string
-    locator[5] =
-  {
-  0},				// locator string
-    power_str[3] =
-  {
-  0};				// power string
+  char callsign[7] = "",	// callsign string
+    locator[5] = "",		// locator string
+    power_str[3] = "";		// power string
 
 
   strcpy (callsign, "      ");	// filling with spaces
@@ -200,16 +188,13 @@ void
 Synchronise (unsigned char symbols_interleaved[],
 	     unsigned char symbols_wspr[])
 {
-  unsigned int sync_word[162] = {
-    1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1,
-      1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0,
-    0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0,
-      1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0,
-    1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0,
-      0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1,
-    1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1,
-      0, 1, 1, 0, 0, 0, 1, 1, 0.0, 0
+  unsigned int sync_word [162]={
+    1,1,0,0,0,0,0,0,1,0,0,0,1,1,1,0,0,0,1,0,0,1,0,1,1,1,1,0,0,0,0,0,0,0,1,0,0,1,0,1,0,0,
+    0,0,0,0,1,0,1,1,0,0,1,1,0,1,0,0,0,1,1,0,1,0,0,0,0,1,1,0,1,0,1,0,1,0,1,0,0,1,0,0,1,0,
+    1,1,0,0,0,1,1,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,0,1,0,0,1,1,1,0,1,1,0,0,1,1,0,1,0,0,0,1,
+    1,1,0,0,0,0,0,1,0,1,0,0,1,1,0,0,0,0,0,0,0,1,1,0,1,0,1,1,0,0,0,1,1,0,0,0
   };
+
   int i;
 
   for (i = 0; i < 162; i++)
@@ -217,12 +202,10 @@ Synchronise (unsigned char symbols_interleaved[],
 }
 
 void
-code_wspr ()
+code_wspr (char* wspr_message, unsigned char* wspr_symbols)
 {
-  unsigned char symbols_parity[162] = { 0 },	// contains 2*81 parity bits
-    symbols_interleaved[162] =
-  {
-  0},				// contains parity bits after interleaving
+  unsigned char symbols_parity[162] = "",	// contains 2*81 parity bits
+    symbols_interleaved[162] = "",		// contains parity bits after interleaving
     c_packed[11];		// for bit packing
 
   unsigned long N,		// for callsign
@@ -230,18 +213,27 @@ code_wspr ()
 
 
   Code_msg (wspr_message, &N, &M);
-
   Pack_msg (N, M, c_packed);
-
   Generate_parity (c_packed, symbols_parity);
-
   Interleave (symbols_parity, symbols_interleaved);
-
   Synchronise (symbols_interleaved, wspr_symbols);
 
-  wspr_encoded = 1;		// a message has been encoded
+}
 
-  sprintf (pbuf, "WSPR encoding ok\n\r");
-  putst1 (pbuf);
+void main(int argc, char *argv[])
+{
+  char wspr_message[20];          // user beacon message to encode
+  unsigned char wspr_symbols[162] = "";   // contains 162 finals symbols
+  int i;
 
+  // argv[1]=callsign, argv[2]=locator, argv[3]=power(dBm)
+  sprintf(wspr_message, "%-7.7s %-6.6s %.2s", argv[1], argv[2], argv[3]);
+  printf("Sending |%s|\n", wspr_message);
+
+  code_wspr(wspr_message, wspr_symbols);
+
+  for (i = 0; i < 162; i++)
+    printf("%d, ", wspr_symbols[i]);
+
+  printf("\n");
 }

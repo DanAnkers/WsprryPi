@@ -12,7 +12,7 @@ void Generate_parity(unsigned char[], unsigned char[]);  // generate 162 parity 
 void Interleave( unsigned char[], unsigned char[]);  // interleave the 162 parity bits
 void Synchronise(unsigned char[], unsigned char[]);  // synchronize with a pseudo random pattern
 
-void code_wspr(void);		// encode the wspr message
+void code_wspr(char* wspr_message, unsigned char* wspr_symbol);		// encode the wspr message
 void go_wspr(void);			// start WSPR beacon mode
 void go_wspr_tx(void);		// set cube in wspr tx mode
 
