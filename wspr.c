@@ -223,30 +223,30 @@ code_wspr (char* wspr_message, unsigned char* wspr_symbols)
 
 void calculate_tuning_info(tuning_data* tuning_info)
 {
-  float divisor; 
+  double divisor; 
   unsigned long decimal_part;
   unsigned long fractional_part;
-  float actual_divisor;
+  double actual_divisor;
 
-  divisor = (float)500000000/tuning_info->requested;
+  divisor = (double)500000000/tuning_info->requested;
   decimal_part = (unsigned long) divisor;
   fractional_part = (divisor - decimal_part) * (1 << 12);
   tuning_info->tuning_word = decimal_part * (1 << 12) + fractional_part;
-  actual_divisor = (float)tuning_info->tuning_word / (float)(1 << 12);
+  actual_divisor = (double)tuning_info->tuning_word / (float)(1 << 12);
 
-  tuning_info->actual = (float)500000000 / actual_divisor;
+  tuning_info->actual = (double)500000000 / actual_divisor;
 }
 
-void sym_to_tuning_words(float base_freq, unsigned char* wspr_symbols, unsigned long* tuning_words)
+void sym_to_tuning_words(double base_freq, unsigned char* wspr_symbols, unsigned long* tuning_words)
 {
   int i;
-  float symbol_freq;
+  double symbol_freq;
   tuning_data tuning_info[4];
 
 
   for (i = 0; i < 4; i++)
   {
-    symbol_freq = base_freq + ( (i-2) * WSPR_OFFSET);
+    symbol_freq = base_freq + (i-2) * WSPR_OFFSET;
     tuning_info[i].requested = symbol_freq;
     calculate_tuning_info(&tuning_info[i]);
     printf("Symbol %d: Target freq=%fHz, Actual freq=%fHz, Error=%fHz, Tuning Word=%lx\n", i, symbol_freq, tuning_info[i].actual, symbol_freq-tuning_info[i].actual, tuning_info[i].tuning_word);
@@ -264,7 +264,7 @@ int main(int argc, char *argv[])
   unsigned char wspr_symbols[162] = "";   // contains 162 finals symbols
   unsigned long tuning_words[162];
   int i;
-  float centre_freq;
+  double centre_freq;
 
   // argv[1]=callsign, argv[2]=locator, argv[3]=power(dBm)
   sprintf(wspr_message, "%-7.7s %-6.6s %.2s", argv[1], argv[2], argv[3]);

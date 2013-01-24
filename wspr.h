@@ -22,9 +22,9 @@ void go_wspr_tx(void);		// set cube in wspr tx mode
 #define POLYNOM_2 0xe4613c47	// parity generator
 
 typedef struct tuning_data {
-  float requested;
+  double requested;
   unsigned long tuning_word;
-  float actual;
+  double actual;
 } tuning_data;
 
 #endif
