@@ -22,10 +22,3 @@ void go_wspr_tx(void);		// set cube in wspr tx mode
 #define POLYNOM_2 0xe4613c47	// parity generator
 
 #endif
-
-
-
-
-
-
-

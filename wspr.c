@@ -228,6 +228,3 @@ sprintf(pbuf,"WSPR encoding ok\n\r");
 putst1(pbuf);
 
 }
-
-
-
