@@ -1,0 +1,9 @@
+To use:
+Connect a low-pass filter to GPIO pin 4 and ground on your Raspberry Pi.  Connect an antenna to the LPF.
+
+Compile by doing:
+gcc -o wspr-pi wspr.c
+
+Usage: wspr-pi <callsign> <locator> <power in dBm> <frequency in Hz>
+        e.g.: wspr-pi MD1CLV IO74 30 137500
+

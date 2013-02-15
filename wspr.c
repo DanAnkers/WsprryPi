@@ -1,18 +1,28 @@
-/*
-WSPR encoding module
-All the encoding is done here
-Thanks to K1JT, G4JNT and PE1NZZ for publishing
-helping infos.
+/* Raspberry Pi bareback LF/MF WSPR transmitter
+Works at frequencies up to about 1MHz - above that the tuning resolution isn't good enough
+for the 1.46Hz tuning steps WSPR requires.
 
-Encoding process is in 5 steps:
-   * bits packing of user message in 50 bits
-   * store the 50 bits dans 11 octets (88 bits and only 81 useful)
-   * convolutionnal encoding with two pariy generators (-> 162 bits)
-   * interleaving of the 162 bits with bit-reverse technique
-   * synchronisation with a psudo-random vector to obtain the
-      162 symbols defining one frequency of 4.
+The output is a square wave so a low pass filter is REQUIRED
 
- F8CHK 29/03/2011                              */
+Based on WSPR code from F8CHK and PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
+
+Brought together by Dan MD1CLV
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+
 
 
 #include <stdio.h>
@@ -31,6 +41,8 @@ Encoding process is in 5 steps:
 
 #include "wspr.h"		// wspr definitions and functions
 
+
+/* RF code: */
 
 #define BCM2708_PERI_BASE        0x20000000
 #define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
@@ -99,7 +111,7 @@ void txon()
 
 void txoff()
 {
-    struct GPCTL setupword = {6/*SRC*/, 1, 0, 0, 0, 1,0x5a}; 
+    struct GPCTL setupword = {6/*SRC*/, 0, 0, 0, 0, 1,0x5a}; 
     ACCESS(CM_GP0CTL) = *((int*)&setupword); 
 }
 
@@ -172,6 +184,21 @@ void setup_gpios()
 
 }
 
+/*
+WSPR encoding module:
+Thanks to K1JT, G4JNT and PE1NZZ for publishing
+helping infos.
+
+Encoding process is in 5 steps:
+   * bits packing of user message in 50 bits
+   * store the 50 bits dans 11 octets (88 bits and only 81 useful)
+   * convolutionnal encoding with two pariy generators (-> 162 bits)
+   * interleaving of the 162 bits with bit-reverse technique
+   * synchronisation with a psudo-random vector to obtain the
+      162 symbols defining one frequency of 4.
+
+ F8CHK 29/03/2011                              */
+
 void
 Code_msg (char usr_message[], unsigned long int *N, unsigned long int *M)
 {
@@ -188,7 +215,7 @@ Code_msg (char usr_message[], unsigned long int *N, unsigned long int *M)
   i = 0;
   while (usr_message[i] != ' ')
     {
-      callsign[i] = usr_message[i];	// extract callsign
+      callsign[i] = islower(usr_message[i])?toupper(usr_message[i]):usr_message[i];	// extract callsign
       i++;
     }
   callsign_length = i;
@@ -196,7 +223,7 @@ Code_msg (char usr_message[], unsigned long int *N, unsigned long int *M)
   i++;
   j = 0;
   while (usr_message[i] != ' ')
-    locator[j++] = usr_message[i++];	// extract locator
+    locator[j++] = islower(usr_message[i])?toupper(usr_message[i++]):usr_message[i++];	// extract locator
   locator[j] = 0;
 
   i++;
@@ -206,6 +233,8 @@ Code_msg (char usr_message[], unsigned long int *N, unsigned long int *M)
   power_str[j] = 0;
 
   power = atoi (power_str);	// power needs to be an integer
+
+  printf("Call: %s / Locator: %s / Power: %ddBm\n", callsign, locator, power);
 
   // Place a space in first position if third character is not a digit
   if (!isdigit (callsign[2]))
@@ -411,21 +440,27 @@ void sym_to_tuning_words(double base_freq, unsigned char* wspr_symbols, unsigned
 int main(int argc, char *argv[])
 {
   char wspr_message[20];          // user beacon message to encode
-  unsigned char wspr_symbols[162] = "";   // contains 162 finals symbols
+  unsigned char wspr_symbols[162] = {};
   unsigned long tuning_words[162];
   int i;
   double centre_freq;
 
+  if(argc != 5){
+    printf("Usage: wspr-pi <callsign> <locator> <power in dBm> <frequency in Hz>\n");
+    printf("\te.g.: wspr-pi MD1CLV IO74 30 137500\n");
+    return 1;
+  }
+
   // argv[1]=callsign, argv[2]=locator, argv[3]=power(dBm)
-  sprintf(wspr_message, "%-7.7s %-6.6s %.2s", argv[1], argv[2], argv[3]);
+  sprintf(wspr_message, "%s %s %s", argv[1], argv[2], argv[3]);
   printf("Sending |%s|\n", wspr_message);
 
   code_wspr(wspr_message, wspr_symbols);
 
   for (i = 0; i < 162; i++)
     printf("%d, ", wspr_symbols[i]);
-
   printf("\n");
+
   centre_freq = atof(argv[4]);
   sym_to_tuning_words(centre_freq, wspr_symbols, tuning_words);
 
@@ -435,11 +470,14 @@ int main(int argc, char *argv[])
 
   setup_io();
   setup_gpios();
+  printf("Transmitting... ");
   txon();
   for (i = 0; i < 162; i++) {
     setfreq(tuning_words[i]);
-    usleep(8192/12000);
+    usleep(8192*1000/12);
   }
   txoff();
+  printf("Done!\n");
+
   return 0;
 }
