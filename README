@@ -1,9 +1,38 @@
+ Raspberry Pi bareback LF/MF/HF WSPR transmitter
+
+ Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO port to Antanna (and LPF), works up to frequencies of about 14MHz.
+
+Credits:
+  Brought together by Dan MD1CLV, extensions by Guido PE1NNZ
+  Based on WSPR code from F8CHK and PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
+
 To use:
-Connect a low-pass filter to GPIO pin 4 and ground on your Raspberry Pi.  Connect an antenna to the LPF.
+  In order to transmit legally, a HAM Radio License is required for running this experiment.
+
+  The output is a square wave so a low pass filter is REQUIRED.
+  Connect a low-pass filter to GPIO4 (GPCLK0) and Ground pins on your Raspberry Pi, connect an antenna to the LPF.
+  The GPIO4 and GND pins can be found on header P1 pin 7 and 9 respectively, the pin closest to P1 label is pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this link for pin layout: http://elinux.org/RPi_Low-level_peripherals
+
+  This software is using the system time to determine the start of a WSPR transmissions, so keep the system time synchronised within 1sec precision, i.e. use NTP network time synchronisation or set time manually with date command.
+
+  Reception reports are logged on Weak Signal Propagation Reporter Network: http://wsprnet.org/drupal/wsprnet/spots
 
 Compile by doing:
-gcc -o wspr-pi wspr.c
+  gcc -lm -std=c99 wspr.c -owspr
 
-Usage: wspr-pi <callsign> <locator> <power in dBm> <frequency in Hz>
-        e.g.: wspr-pi MD1CLV IO74 30 137500
+Usage:
+  sudo ./wspr <callsign> <locator> <power in dBm> <frequency in Hz>
+        e.g.: sudo ./wspr K1JT FN20 10 7040074
 
+  WSPR is used on the following frequencies (local restriction may apply):
+     LF   137400 - 137600
+     MF   475600 - 475800
+    160m  1838000 - 1838200
+     80m  3594000 - 3594200
+     60m  5288600 - 5288800
+     40m  7040000 - 7040200
+     30m  10140100 - 10140300
+     20m  14097000 - 14097200
+
+Compile:
+  gcc -lm -std=c99 wspr.c -owspr

@@ -1,13 +1,10 @@
-/* Raspberry Pi bareback LF/MF WSPR transmitter
-Works at frequencies up to about 1MHz - above that the tuning resolution isn't good enough
-for the 1.46Hz tuning steps WSPR requires.
+/*
 
-The output is a square wave so a low pass filter is REQUIRED
+ Raspberry Pi bareback LF/MF/HF WSPR transmitter
 
-Based on WSPR code from F8CHK and PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
+ Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO port to Antanna (and LPF), works up to frequencies of about 14MHz.
 
-Brought together by Dan MD1CLV
-
+License:
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 2 of the License, or
@@ -20,6 +17,42 @@ Brought together by Dan MD1CLV
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Credits:
+  Brought together by Dan MD1CLV, extensions by Guido PE1NNZ
+  Based on WSPR code from F8CHK and PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
+
+To use:
+  In order to transmit legally, a HAM Radio License is required for running this experiment.
+
+  The output is a square wave so a low pass filter is REQUIRED.
+  Connect a low-pass filter to GPIO4 (GPCLK0) and Ground pins on your Raspberry Pi, connect an antenna to the LPF. 
+  The GPIO4 and GND pins can be found on header P1 pin 7 and 9 respectively, the pin closest to P1 label is pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this link for pin layout: http://elinux.org/RPi_Low-level_peripherals
+
+  This software is using the system time to determine the start of a WSPR transmissions, so keep the system time synchronised within 1sec precision, i.e. use NTP network time synchronisation or set time manually with date command.
+
+  Reception reports are logged on Weak Signal Propagation Reporter Network: http://wsprnet.org/drupal/wsprnet/spots
+
+Compile by doing:
+  gcc -lm -std=c99 wspr.c -owspr
+
+Usage: 
+  sudo ./wspr <callsign> <locator> <power in dBm> <frequency in Hz>
+        e.g.: sudo ./wspr K1JT FN20 10 7040074
+
+  WSPR is used on the following frequencies (local restriction may apply):
+     LF   137400 - 137600
+     MF   475600 - 475800
+    160m  1838000 - 1838200
+     80m  3594000 - 3594200
+     60m  5288600 - 5288800
+     40m  7040000 - 7040200
+     30m  10140100 - 10140300
+     20m  14097000 - 14097200
+
+Compile:
+  gcc -lm -std=c99 wspr.c -owspr
+
 */
 
 
@@ -28,6 +61,7 @@ Brought together by Dan MD1CLV
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <math.h>
@@ -36,11 +70,28 @@ Brought together by Dan MD1CLV
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <signal.h>
+#include <malloc.h>
+#include <time.h>
 
-#include <unistd.h>
+void Code_msg(char[], unsigned long int*, unsigned long int*);      // encode callsign, locator and power
+void Pack_msg(unsigned long int, unsigned long int, unsigned char[]);// packed 50 bits in 11 bytes
+void Generate_parity(unsigned char[], unsigned char[]);  // generate 162 parity bits
+void Interleave( unsigned char[], unsigned char[]);  // interleave the 162 parity bits
+void Synchronise(unsigned char[], unsigned char[]);  // synchronize with a pseudo random pattern
 
-#include "wspr.h"		// wspr definitions and functions
+void code_wspr(char* wspr_message, unsigned char* wspr_symbol);         // encode the wspr message
+void go_wspr(void);                     // start WSPR beacon mode
+void go_wspr_tx(void);          // set cube in wspr tx mode
 
+#define CAL_PWM_CLK   (31500000 * 1.078431372549019607843137254902)         // calibrated PWM clock
+#define CAL_PLL_CLK   (500000000.0 * 0.99994290179416484635001314707972)    // calibrated PLL reference clock 
+
+#define WSPR_SYMTIME (8192.0/12000.0)  // symbol time
+#define WSPR_OFFSET  (1.0/WSPR_SYMTIME)     //  tone separation
+
+#define POLYNOM_1 0xf2d05351    // polynoms for
+#define POLYNOM_2 0xe4613c47    // parity generator
 
 /* RF code: */
 
@@ -73,7 +124,9 @@ volatile unsigned *allof7e;
 #define CM_GP0CTL (0x7e101070)
 #define GPFSEL0 (0x7E200000)
 #define CM_GP0DIV (0x7e101074)
-
+#define CLKBASE (0x7E101000)
+#define DMABASE (0x7E007000)
+#define PWMBASE  (0x7e20C000) /* PWM controller */
 
 struct GPCTL {
     char SRC         : 4;
@@ -86,6 +139,66 @@ struct GPCTL {
     unsigned int     : 13;
     char PASSWD      : 8;
 };
+
+void getRealMemPage(void** vAddr, void** pAddr) {
+    void* a = (void*)valloc(4096);
+
+    ((int*)a)[0] = 1;  // use page to force allocation.
+
+    mlock(a, 4096);  // lock into ram.
+
+    *vAddr = a;  // yay - we know the virtual address
+
+    unsigned long long frameinfo;
+
+    int fp = open("/proc/self/pagemap", 'r');
+    lseek(fp, ((int)a)/4096*8, SEEK_SET);
+    read(fp, &frameinfo, sizeof(frameinfo));
+
+    *pAddr = (void*)((int)(frameinfo*4096));
+}
+
+void freeRealMemPage(void* vAddr) {
+
+    munlock(vAddr, 4096);  // unlock ram.
+
+    free(vAddr);
+}
+
+struct CB {
+    volatile unsigned int TI;
+    volatile unsigned int SOURCE_AD;
+    volatile unsigned int DEST_AD;
+    volatile unsigned int TXFR_LEN;
+    volatile unsigned int STRIDE;
+    volatile unsigned int NEXTCONBK;
+    volatile unsigned int RES1;
+    volatile unsigned int RES2;
+
+};
+
+struct DMAregs {
+    volatile unsigned int CS;
+    volatile unsigned int CONBLK_AD;
+    volatile unsigned int TI;
+    volatile unsigned int SOURCE_AD;
+    volatile unsigned int DEST_AD;
+    volatile unsigned int TXFR_LEN;
+    volatile unsigned int STRIDE;
+    volatile unsigned int NEXTCONBK;
+    volatile unsigned int DEBUG;
+};
+
+struct PageInfo {
+    void* p;  // physical address
+    void* v;   // virtual address
+};
+
+struct PageInfo constPage;
+struct PageInfo instrPage;
+struct PageInfo instrs[1024];
+
+double fracs[1024];
 
 void txon()
 {
@@ -119,6 +232,145 @@ void setfreq(long freq)
 {
     ACCESS(CM_GP0DIV) = (0x5a << 24) + freq;
 }
+
+void txSym(int sym, float tsym)
+{
+    int bufPtr=0;
+    short data;
+    int iter = 1400;
+    int clocksPerIter = (int)(CAL_PWM_CLK*tsym/(float)iter);
+    //printf("tsym=%f iter=%u clocksPerIter=%u tsymerr=%f\n", tsym, iter, clocksPerIter, tsym - ((float)clocksPerIter*(float)iter)/CAL_PWM_CLK );
+    int i = sym*3 + 511;
+    double dval = fracs[i]; // ratio between 0 and 1 of frequency position that is in between two fractional clock divider bins
+    int k = (int)(round(dval));  // integer component
+    double frac = (dval - (double)k)/2 + 0.5;
+    unsigned int fracval = (frac*clocksPerIter);
+    //printf("i=%d *i=%u %u fracval=%u dval=%f sym=%d\n", i, ((int*)(constPage.v))[i-1], ((int*)(constPage.v))[i+1], fracval, dval, sym); 
+    for(int j=0; j!=iter; j++){
+        bufPtr++;
+        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(1000);
+        ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (int)constPage.p + (i-1)*4;
+
+        bufPtr++;
+        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(1000);
+        ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = clocksPerIter-fracval;
+
+        bufPtr++;
+        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(1000);
+        ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (int)constPage.p + (i+1)*4;
+
+        bufPtr=(bufPtr+1) % (1024);
+        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(1000);
+        ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = fracval;
+    }
+}
+
+void unSetupDMA(){
+    printf("exiting\n");
+    struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS(DMABASE));
+    DMA0->CS =1<<31;  // reset dma controller
+   
+}
+
+void handSig() {
+  txoff();
+  exit(0);
+}
+void setupDMA( float centerFreq, double symOffset ){
+  double baseFreq = 500000000.0 * 0.99993949293374050138484482636176;  // corrected
+  atexit(unSetupDMA);
+  signal (SIGINT, handSig);
+  signal (SIGTERM, handSig);
+  signal (SIGHUP, handSig);
+  signal (SIGQUIT, handSig);
+
+  // allocate a few pages of ram
+  getRealMemPage(&constPage.v, &constPage.p);
+ 
+   // make data page contents - it's essientially 1024 different commands for the
+   // DMA controller to send to the clock module at the correct time.
+  for (int i=1; i<1023; i+=3){
+     double freq = centerFreq + ((double)(-511 + i))*symOffset/3.0;
+     double divisor = baseFreq/freq;
+     unsigned long integer_part = (unsigned long) divisor;
+     unsigned long fractional_part = (divisor - integer_part) * (1 << 12);
+     unsigned long tuning_word = (0x5a << 24) + integer_part * (1 << 12) + fractional_part;
+     if(fractional_part == 0 || fractional_part == 1023){
+       printf("warning: symbol %u unusable because fractional divider is out of range, try near frequency.\n", i/3);
+     }
+     ((int*)(constPage.v))[i-1] = tuning_word - 1;
+     ((int*)(constPage.v))[i] = tuning_word;
+     ((int*)(constPage.v))[i+1] = tuning_word + 1;
+     double actual_freq = baseFreq/((double)integer_part + (double)fractional_part/(double)(1<<12));
+     double freq_corr = freq - actual_freq;
+     double delta = baseFreq/((double)integer_part + (double)fractional_part/(double)(1<<12)) - baseFreq/((double)integer_part + ((double)fractional_part+1.0)/(double)(1<<12));
+     //if(delta/64 > symOffset ){
+     if(delta/64 > symOffset*1.25 ){
+       printf("warning: PWM fractional divider has not enough resolution: %f while %f is required , try lower frequency.\n", delta/64, symOffset);
+       exit(0);
+     }
+     fracs[i] = -1*freq_corr/delta;
+     //printf("i=%u f=%f fa=%f corr=%f delta=%f percfrac=%f int=%u frac=%u tuning_word=%u\n", i, freq, actual_freq, freq_corr, delta, fracs[i], integer_part, fractional_part, tuning_word );
+   } 
+  
+   int instrCnt = 0;
+  
+   while (instrCnt<1024) {
+     getRealMemPage(&instrPage.v, &instrPage.p);
+    
+     // make copy instructions
+     struct CB* instr0= (struct CB*)instrPage.v;
+    
+     for (int i=0; i<4096/sizeof(struct CB); i++) {
+       instrs[instrCnt].v = (void*)((int)instrPage.v + sizeof(struct CB)*i);
+       instrs[instrCnt].p = (void*)((int)instrPage.p + sizeof(struct CB)*i);
+       instr0->SOURCE_AD = (unsigned int)constPage.p+2048;
+       instr0->DEST_AD = PWMBASE+0x18 /* FIF1 */;
+       instr0->TXFR_LEN = 4;
+       instr0->STRIDE = 0;
+       //instr0->NEXTCONBK = (int)instrPage.p + sizeof(struct CB)*(i+1);
+       instr0->TI = (1/* DREQ  */<<6) | (5 /* PWM */<<16) |  (1<<26/* no wide*/) ;
+       instr0->RES1 = 0;
+       instr0->RES2 = 0;
+
+       if (i%2) {
+         instr0->DEST_AD = CM_GP0DIV;
+         instr0->STRIDE = 4;
+         instr0->TI = (1<<26/* no wide*/) ;
+       }
+
+       if (instrCnt!=0) ((struct CB*)(instrs[instrCnt-1].v))->NEXTCONBK = (int)instrs[instrCnt].p;
+       instr0++;
+       instrCnt++;
+     }
+   }
+   ((struct CB*)(instrs[1023].v))->NEXTCONBK = (int)instrs[0].p;
+
+   // set up a clock for the PWM
+   ACCESS(CLKBASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000026;
+   usleep(1000);
+   ACCESS(CLKBASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002800;
+   ACCESS(CLKBASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000016;
+   usleep(1000);
+
+   // set up pwm
+   ACCESS(PWMBASE + 0x0 /* CTRL*/) = 0;
+   usleep(1000);
+   ACCESS(PWMBASE + 0x4 /* status*/) = -1;  // clear errors
+   usleep(1000);
+   ACCESS(PWMBASE + 0x0 /* CTRL*/) = -1; //(1<<13 /* Use fifo */) | (1<<10 /* repeat */) | (1<<9 /* serializer */) | (1<<8 /* enable ch */) ;
+   usleep(1000);
+   ACCESS(PWMBASE + 0x8 /* DMAC*/) = (1<<31 /* DMA enable */) | 0x0707;
+
+   //activate dma
+   struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS(DMABASE));
+   DMA0->CS =1<<31;  // reset
+   DMA0->CONBLK_AD=0;
+   DMA0->TI=0;
+   DMA0->CONBLK_AD = (unsigned int)(instrPage.p);
+   DMA0->CS =(1<<0)|(255 <<16);  // enable bit = 0, clear end flag = 1, prio=19-16
+}
+
 
 //
 // Set up a memory regions to access GPIO
@@ -186,7 +438,7 @@ void setup_gpios()
 
 /*
 WSPR encoding module:
-Thanks to K1JT, G4JNT and PE1NZZ for publishing
+Thanks to K1JT, G4JNT and PE1NNZ for publishing
 helping infos.
 
 Encoding process is in 5 steps:
@@ -400,40 +652,15 @@ code_wspr (char* wspr_message, unsigned char* wspr_symbols)
 
 }
 
-void calculate_tuning_info(tuning_data* tuning_info)
+void wait_even_minute()
 {
-  double divisor; 
-  unsigned long decimal_part;
-  unsigned long fractional_part;
-  double actual_divisor;
-
-  divisor = (double)500000000/tuning_info->requested;
-  decimal_part = (unsigned long) divisor;
-  fractional_part = (divisor - decimal_part) * (1 << 12);
-  tuning_info->tuning_word = decimal_part * (1 << 12) + fractional_part;
-  actual_divisor = (double)tuning_info->tuning_word / (float)(1 << 12);
-
-  tuning_info->actual = (double)500000000 / actual_divisor;
-}
-
-void sym_to_tuning_words(double base_freq, unsigned char* wspr_symbols, unsigned long* tuning_words)
-{
-  int i;
-  double symbol_freq;
-  tuning_data tuning_info[4];
-
-
-  for (i = 0; i < 4; i++)
-  {
-    symbol_freq = base_freq + (i-2) * WSPR_OFFSET;
-    tuning_info[i].requested = symbol_freq;
-    calculate_tuning_info(&tuning_info[i]);
-    printf("Symbol %d: Target freq=%fHz, Actual freq=%fHz, Error=%fHz, Tuning Word=%lx\n", i, symbol_freq, tuning_info[i].actual, symbol_freq-tuning_info[i].actual, tuning_info[i].tuning_word);
-  }
-
-  for (i = 0; i < 162; i++)
-  {
-    tuning_words[i] = tuning_info[wspr_symbols[i]].tuning_word;
+  time_t t;
+  struct tm* ptm;
+  for(;;){
+    time(&t); 
+    ptm = gmtime(&t);
+    if((ptm->tm_min % 2) == 0 && ptm->tm_sec == 1) break;
+    usleep(1000);
   }
 }
 
@@ -445,9 +672,10 @@ int main(int argc, char *argv[])
   int i;
   double centre_freq;
 
-  if(argc != 5){
-    printf("Usage: wspr-pi <callsign> <locator> <power in dBm> <frequency in Hz>\n");
-    printf("\te.g.: wspr-pi MD1CLV IO74 30 137500\n");
+  if(argc < 5){
+    printf("Usage: wspr <callsign> <locator> <power in dBm> <frequency in Hz>\n");
+    printf("\te.g.: wspr K1JT FN20 10 7040074\n");
+    printf("\tchoose freq in range +/-100Hz around 137500, 475700, 1838100, 3594100, 5288700, 7040100, 10140200, 14097100 Hz\n");
     return 1;
   }
 
@@ -457,12 +685,12 @@ int main(int argc, char *argv[])
 
   code_wspr(wspr_message, wspr_symbols);
 
+  printf("Symbols: ");
   for (i = 0; i < 162; i++)
-    printf("%d, ", wspr_symbols[i]);
+    printf("%d,", wspr_symbols[i]);
   printf("\n");
 
   centre_freq = atof(argv[4]);
-  sym_to_tuning_words(centre_freq, wspr_symbols, tuning_words);
 
   /* Now we have the list of tuning words, let's transmit them
   Note that this version doesn't check whether we are in a correct timeslot
@@ -470,13 +698,22 @@ int main(int argc, char *argv[])
 
   setup_io();
   setup_gpios();
-  printf("Transmitting... ");
   txon();
-  for (i = 0; i < 162; i++) {
-    setfreq(tuning_words[i]);
-    usleep(8192*1000/12);
-  }
+  setupDMA(centre_freq, WSPR_OFFSET);
   txoff();
+  printf("Start transmitting on even minute...\n");
+  for(;;)
+  {
+    //printf("Idle...\n");
+    wait_even_minute();
+    txon();
+    //printf("Transmitting...\n");
+    for (i = 0; i < 162; i++) {
+      txSym(wspr_symbols[i], WSPR_SYMTIME);
+      //txSym(atof(argv[5]), WSPR_SYMTIME);
+    }
+    txoff();
+  }
   printf("Done!\n");
 
   return 0;
