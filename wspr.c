@@ -254,7 +254,7 @@ void txSym(int sym, float tsym)
 {
     int bufPtr=0;
     short data;
-    int iter = 4000;//1400;
+    int iter = 1400;
     int clocksPerIter = (int)(CAL_PWM_CLK*tsym/(float)iter);
     //printf("tsym=%f iter=%u clocksPerIter=%u tsymerr=%f\n", tsym, iter, clocksPerIter, tsym - ((float)clocksPerIter*(float)iter)/CAL_PWM_CLK );
     int i = sym*3 + 511;
