@@ -3,7 +3,9 @@
  Raspberry Pi bareback LF/MF/HF WSPR transmitter
 
  Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO 
- port to Antanna (and LPF), operates on LF, MF, HF and VHF bands.
+ port to Antanna (and LPF), operates on LF, MF, HF and VHF bands from 
+ 0 to 250 MHz.
+
 
 License:
     This program is free software: you can redistribute it and/or modify
@@ -43,9 +45,6 @@ To use:
   i.e. use NTP network time synchronisation or set time manually with date 
   command. Reception reports are logged on Weak Signal Propagation Reporter 
   Network: http://wsprnet.org/drupal/wsprnet/spots
-
-Compile by doing:
-  gcc -lm -std=c99 wspr.c -owspr
 
 Usage: 
   sudo ./wspr <callsign> <locator> <power in dBm> <frequency in Hz>

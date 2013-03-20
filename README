@@ -1,24 +1,33 @@
- Raspberry Pi bareback LF/MF/HF WSPR transmitter
+Raspberry Pi bareback LF/MF/HF WSPR transmitter
 
- Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO port to Antanna (and LPF), works up to frequencies of about 14MHz.
+ Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO
+ port to Antanna (and LPF), operates on LF, MF, HF and VHF bands from
+ 0 to 250 MHz.
 
 Credits:
-  Brought together by Dan MD1CLV, extensions by Guido PE1NNZ
-  Based on WSPR code from F8CHK and PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
+  Credits goes to Oliver Mattos and Oskar Weigl who implemented PiFM [1]
+  based on the idea of exploiting RPi DPLL as FM transmitter. Dan MD1CLV
+  combined this effort with WSPR encoding algorithm from F8CHK, resulting
+  in WsprryPi a WSPR beacon for LF and MF bands. Guido PE1NNZ extended
+  this effort with DMA based PWM modulation of fractional divider that was
+  part of PiFM, allowing to operate the WSPR beacon also on HF and VHF bands.
+
+  [1] PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
 
 To use:
-  In order to transmit legally, a HAM Radio License is required for running this experiment.
+  In order to transmit legally, a HAM Radio License is required for running
+  this experiment. The output is a square wave so a low pass filter is REQUIRED.
+  Connect a low-pass filter to GPIO4 (GPCLK0) and Ground pins on your
+  Raspberry Pi, connect an antenna to the LPF. The GPIO4 and GND pins can be
+  found on header P1 pin 7 and 9 respectively, the pin closest to P1 label is
+  pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this
+  link for pin layout: http://elinux.org/RPi_Low-level_peripherals
 
-  The output is a square wave so a low pass filter is REQUIRED.
-  Connect a low-pass filter to GPIO4 (GPCLK0) and Ground pins on your Raspberry Pi, connect an antenna to the LPF.
-  The GPIO4 and GND pins can be found on header P1 pin 7 and 9 respectively, the pin closest to P1 label is pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this link for pin layout: http://elinux.org/RPi_Low-level_peripherals
-
-  This software is using the system time to determine the start of a WSPR transmissions, so keep the system time synchronised within 1sec precision, i.e. use NTP network time synchronisation or set time manually with date command.
-
-  Reception reports are logged on Weak Signal Propagation Reporter Network: http://wsprnet.org/drupal/wsprnet/spots
-
-Compile by doing:
-  gcc -lm -std=c99 wspr.c -owspr
+  This software is using the system time to determine the start of a WSPR
+  transmissions, so keep the system time synchronised within 1sec precision,
+  i.e. use NTP network time synchronisation or set time manually with date
+  command. Reception reports are logged on Weak Signal Propagation Reporter
+  Network: http://wsprnet.org/drupal/wsprnet/spots
 
 Usage:
   sudo ./wspr <callsign> <locator> <power in dBm> <frequency in Hz>
@@ -33,6 +42,15 @@ Usage:
      40m  7040000 - 7040200
      30m  10140100 - 10140300
      20m  14097000 - 14097200
+     17m  18106000 - 18106200
+     15m  21096000 - 21096200
+     12m  24926000 - 24926200
+     10m  28126000 - 28126200
+      6m  50294400 - 50294600
+      4m  70092400 - 70092600
+      2m  144490400 -144490600
 
 Compile:
   gcc -lm -std=c99 wspr.c -owspr
+
+
