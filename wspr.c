@@ -1,6 +1,6 @@
 /*
 
- Raspberry Pi bareback LF/MF/HF WSPR transmitter
+ Raspberry Pi bareback LF/MF/HF/VHF WSPR transmitter
 
  Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO 
  port to Antanna (and LPF), operates on LF, MF, HF and VHF bands from 
@@ -123,8 +123,8 @@ char *spi0_mem, *spi0_map;
 
 
 // I/O access
-volatile unsigned *gpio;
-volatile unsigned *allof7e;
+volatile unsigned *gpio = NULL;
+volatile unsigned *allof7e = NULL;
 
 // GPIO setup macros. Always use INP_GPIO(x) before using OUT_GPIO(x) or SET_GPIO_ALT(x,y)
 #define INP_GPIO(g) *(gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
@@ -219,8 +219,8 @@ double fracs[1024];
 
 void txon()
 {
-
-    allof7e = (unsigned *)mmap(
+    if(allof7e == NULL){
+      allof7e = (unsigned *)mmap(
                   NULL,
                   0x01000000,  //len
                   PROT_READ|PROT_WRITE,
@@ -228,8 +228,8 @@ void txon()
                   mem_fd,
                   0x20000000  //base
               );
-
-    if ((int)allof7e==-1) exit(-1);
+      if ((int)allof7e==-1) exit(-1);
+    }
 
     SETBIT(GPFSEL0 , 14);
     CLRBIT(GPFSEL0 , 13);
@@ -254,7 +254,7 @@ void txSym(int sym, float tsym)
 {
     int bufPtr=0;
     short data;
-    int iter = 1400;
+    int iter = 4000;//1400;
     int clocksPerIter = (int)(CAL_PWM_CLK*tsym/(float)iter);
     //printf("tsym=%f iter=%u clocksPerIter=%u tsymerr=%f\n", tsym, iter, clocksPerIter, tsym - ((float)clocksPerIter*(float)iter)/CAL_PWM_CLK );
     int i = sym*3 + 511;
