@@ -2,7 +2,8 @@
 
  Raspberry Pi bareback LF/MF/HF WSPR transmitter
 
- Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO port to Antanna (and LPF), works up to frequencies of about 14MHz.
+ Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO 
+ port to Antanna (and LPF), operates on LF, MF, HF and VHF bands.
 
 License:
     This program is free software: you can redistribute it and/or modify
@@ -19,19 +20,29 @@ License:
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 Credits:
-  Brought together by Dan MD1CLV, extensions by Guido PE1NNZ
-  Based on WSPR code from F8CHK and PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
+  Credits goes to Oliver Mattos and Oskar Weigl who implemented PiFM [1]
+  based on the idea of exploiting RPi DPLL as FM transmitter. Dan MD1CLV
+  combined this effort with WSPR encoding algorithm from F8CHK, resulting  
+  in WsprryPi a WSPR beacon for LF and MF bands. Guido PE1NNZ extended 
+  this effort with DMA based PWM modulation of fractional divider that was 
+  part of PiFM, allowing to operate the WSPR beacon also on HF and VHF bands.
+  
+  [1] PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
 
 To use:
-  In order to transmit legally, a HAM Radio License is required for running this experiment.
+  In order to transmit legally, a HAM Radio License is required for running 
+  this experiment. The output is a square wave so a low pass filter is REQUIRED.
+  Connect a low-pass filter to GPIO4 (GPCLK0) and Ground pins on your 
+  Raspberry Pi, connect an antenna to the LPF. The GPIO4 and GND pins can be 
+  found on header P1 pin 7 and 9 respectively, the pin closest to P1 label is 
+  pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this 
+  link for pin layout: http://elinux.org/RPi_Low-level_peripherals
 
-  The output is a square wave so a low pass filter is REQUIRED.
-  Connect a low-pass filter to GPIO4 (GPCLK0) and Ground pins on your Raspberry Pi, connect an antenna to the LPF. 
-  The GPIO4 and GND pins can be found on header P1 pin 7 and 9 respectively, the pin closest to P1 label is pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this link for pin layout: http://elinux.org/RPi_Low-level_peripherals
-
-  This software is using the system time to determine the start of a WSPR transmissions, so keep the system time synchronised within 1sec precision, i.e. use NTP network time synchronisation or set time manually with date command.
-
-  Reception reports are logged on Weak Signal Propagation Reporter Network: http://wsprnet.org/drupal/wsprnet/spots
+  This software is using the system time to determine the start of a WSPR 
+  transmissions, so keep the system time synchronised within 1sec precision, 
+  i.e. use NTP network time synchronisation or set time manually with date 
+  command. Reception reports are logged on Weak Signal Propagation Reporter 
+  Network: http://wsprnet.org/drupal/wsprnet/spots
 
 Compile by doing:
   gcc -lm -std=c99 wspr.c -owspr
@@ -49,6 +60,13 @@ Usage:
      40m  7040000 - 7040200
      30m  10140100 - 10140300
      20m  14097000 - 14097200
+     17m  18106000 - 18106200
+     15m  21096000 - 21096200
+     12m  24926000 - 24926200
+     10m  28126000 - 28126200
+      6m  50294400 - 50294600
+      4m  70092400 - 70092600
+      2m  144490400 -144490600
 
 Compile:
   gcc -lm -std=c99 wspr.c -owspr
@@ -277,7 +295,6 @@ void handSig() {
   exit(0);
 }
 void setupDMA( float centerFreq, double symOffset ){
-  double baseFreq = 500000000.0 * 0.99993949293374050138484482636176;  // corrected
   atexit(unSetupDMA);
   signal (SIGINT, handSig);
   signal (SIGTERM, handSig);
@@ -291,7 +308,7 @@ void setupDMA( float centerFreq, double symOffset ){
    // DMA controller to send to the clock module at the correct time.
   for (int i=1; i<1023; i+=3){
      double freq = centerFreq + ((double)(-511 + i))*symOffset/3.0;
-     double divisor = baseFreq/freq;
+     double divisor = CAL_PLL_CLK/freq;
      unsigned long integer_part = (unsigned long) divisor;
      unsigned long fractional_part = (divisor - integer_part) * (1 << 12);
      unsigned long tuning_word = (0x5a << 24) + integer_part * (1 << 12) + fractional_part;
@@ -301,16 +318,16 @@ void setupDMA( float centerFreq, double symOffset ){
      ((int*)(constPage.v))[i-1] = tuning_word - 1;
      ((int*)(constPage.v))[i] = tuning_word;
      ((int*)(constPage.v))[i+1] = tuning_word + 1;
-     double actual_freq = baseFreq/((double)integer_part + (double)fractional_part/(double)(1<<12));
+     double actual_freq = CAL_PLL_CLK/((double)integer_part + (double)fractional_part/(double)(1<<12));
      double freq_corr = freq - actual_freq;
-     double delta = baseFreq/((double)integer_part + (double)fractional_part/(double)(1<<12)) - baseFreq/((double)integer_part + ((double)fractional_part+1.0)/(double)(1<<12));
-     //if(delta/64 > symOffset ){
-     if(delta/64 > symOffset*1.25 ){
-       printf("warning: PWM fractional divider has not enough resolution: %f while %f is required , try lower frequency.\n", delta/64, symOffset);
+     double delta = CAL_PLL_CLK/((double)integer_part + (double)fractional_part/(double)(1<<12)) - CAL_PLL_CLK/((double)integer_part + ((double)fractional_part+1.0)/(double)(1<<12));
+     double resolution = 2.0 * delta / pow(2,32);
+     if(resolution > symOffset ){
+       printf("warning: PWM/PLL fractional divider has not enough resolution: %f while %f is required , try lower frequency.\n", resolution, symOffset);
        exit(0);
      }
      fracs[i] = -1*freq_corr/delta;
-     //printf("i=%u f=%f fa=%f corr=%f delta=%f percfrac=%f int=%u frac=%u tuning_word=%u\n", i, freq, actual_freq, freq_corr, delta, fracs[i], integer_part, fractional_part, tuning_word );
+     //printf("i=%u f=%f fa=%f corr=%f delta=%f percfrac=%f int=%u frac=%u tuning_word=%u resolution=%fimHz\n", i, freq, actual_freq, freq_corr, delta, fracs[i], integer_part, fractional_part, tuning_word, resolution *1000);
    } 
   
    int instrCnt = 0;
@@ -674,8 +691,8 @@ int main(int argc, char *argv[])
 
   if(argc < 5){
     printf("Usage: wspr <callsign> <locator> <power in dBm> <frequency in Hz>\n");
-    printf("\te.g.: wspr K1JT FN20 10 7040074\n");
-    printf("\tchoose freq in range +/-100Hz around 137500, 475700, 1838100, 3594100, 5288700, 7040100, 10140200, 14097100 Hz\n");
+    printf("\te.g.: sudo ./wspr PE1NNZ JO21 10 7040074\n");
+    printf("\tchoose freq in range +/-100 Hz around one of center frequencies: 137500, 475700, 1838100, 3594100, 5288700, 7040100, 10140200, 14097100, 18106100, 21096100, 24926100, 28126100, 50294500, 70092500, 144490500 Hz\n");
     return 1;
   }
 
@@ -689,32 +706,23 @@ int main(int argc, char *argv[])
   for (i = 0; i < 162; i++)
     printf("%d,", wspr_symbols[i]);
   printf("\n");
+  printf("Transmission starts on even minute...\n");
 
   centre_freq = atof(argv[4]);
-
-  /* Now we have the list of tuning words, let's transmit them
-  Note that this version doesn't check whether we are in a correct timeslot
-  */
-
   setup_io();
   setup_gpios();
   txon();
   setupDMA(centre_freq, WSPR_OFFSET);
   txoff();
-  printf("Start transmitting on even minute...\n");
   for(;;)
   {
-    //printf("Idle...\n");
     wait_even_minute();
     txon();
-    //printf("Transmitting...\n");
     for (i = 0; i < 162; i++) {
       txSym(wspr_symbols[i], WSPR_SYMTIME);
       //txSym(atof(argv[5]), WSPR_SYMTIME);
     }
     txoff();
   }
-  printf("Done!\n");
-
   return 0;
 }
