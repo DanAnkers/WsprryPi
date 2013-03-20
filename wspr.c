@@ -39,8 +39,11 @@ To use:
   found on header P1 pin 7 and 9 respectively, the pin closest to P1 label is 
   pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this 
   link for pin layout: http://elinux.org/RPi_Low-level_peripherals
+  The expected power output is 10mW (+10dBm) in a 50 Ohm load. This looks
+  neglible, but when connected to a simple dipole antenna this may result in 
+  reception reports ranging up to several thousands of kilometers.
 
-  This software is using the system time to determine the start of a WSPR 
+  This software is using system time to determine the start of a WSPR 
   transmissions, so keep the system time synchronised within 1sec precision, 
   i.e. use NTP network time synchronisation or set time manually with date 
   command. Reception reports are logged on Weak Signal Propagation Reporter 
@@ -254,7 +257,7 @@ void txSym(int sym, float tsym)
 {
     int bufPtr=0;
     short data;
-    int iter = 1400;
+    int iter = 1400; //4000
     int clocksPerIter = (int)(CAL_PWM_CLK*tsym/(float)iter);
     //printf("tsym=%f iter=%u clocksPerIter=%u tsymerr=%f\n", tsym, iter, clocksPerIter, tsym - ((float)clocksPerIter*(float)iter)/CAL_PWM_CLK );
     int i = sym*3 + 511;
