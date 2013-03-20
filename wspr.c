@@ -296,16 +296,7 @@ void handSig() {
   txoff();
   exit(0);
 }
-void setupDMA( float centerFreq, double symOffset ){
-  atexit(unSetupDMA);
-  signal (SIGINT, handSig);
-  signal (SIGTERM, handSig);
-  signal (SIGHUP, handSig);
-  signal (SIGQUIT, handSig);
-
-  // allocate a few pages of ram
-  getRealMemPage(&constPage.v, &constPage.p);
- 
+void setupDMATab( float centerFreq, double symOffset ){
    // make data page contents - it's essientially 1024 different commands for the
    // DMA controller to send to the clock module at the correct time.
   for (int i=1; i<1023; i+=3){
@@ -330,8 +321,19 @@ void setupDMA( float centerFreq, double symOffset ){
      }
      fracs[i] = -1*freq_corr/delta;
      //printf("i=%u f=%f fa=%f corr=%f delta=%f percfrac=%f int=%u frac=%u tuning_word=%u resolution=%fimHz\n", i, freq, actual_freq, freq_corr, delta, fracs[i], integer_part, fractional_part, tuning_word, resolution *1000);
-   } 
-  
+   }
+}
+
+void setupDMA(){
+   atexit(unSetupDMA);
+   signal (SIGINT, handSig);
+   signal (SIGTERM, handSig);
+   signal (SIGHUP, handSig);
+   signal (SIGQUIT, handSig);
+
+   // allocate a few pages of ram
+   getRealMemPage(&constPage.v, &constPage.p);
+ 
    int instrCnt = 0;
   
    while (instrCnt<1024) {
@@ -690,41 +692,44 @@ int main(int argc, char *argv[])
   unsigned long tuning_words[162];
   int i;
   double centre_freq;
+  int nbands = argc - 4;
+  int band = 0;
 
   if(argc < 5){
-    printf("Usage: wspr <callsign> <locator> <power in dBm> <frequency in Hz>\n");
+    printf("Usage: wspr <callsign> <locator> <power in dBm> [<frequency in Hz> ...]\n");
     printf("\te.g.: sudo ./wspr PE1NNZ JO21 10 7040074\n");
     printf("\tchoose freq in range +/-100 Hz around one of center frequencies: 137500, 475700, 1838100, 3594100, 5288700, 7040100, 10140200, 14097100, 18106100, 21096100, 24926100, 28126100, 50294500, 70092500, 144490500 Hz\n");
     return 1;
   }
-
   // argv[1]=callsign, argv[2]=locator, argv[3]=power(dBm)
   sprintf(wspr_message, "%s %s %s", argv[1], argv[2], argv[3]);
   printf("Sending |%s|\n", wspr_message);
 
   code_wspr(wspr_message, wspr_symbols);
-
   printf("Symbols: ");
   for (i = 0; i < 162; i++)
     printf("%d,", wspr_symbols[i]);
   printf("\n");
-  printf("Transmission starts on even minute...\n");
-
-  centre_freq = atof(argv[4]);
   setup_io();
   setup_gpios();
   txon();
-  setupDMA(centre_freq, WSPR_OFFSET);
-  txoff();
+  setupDMA();
+  printf("Transmission starts on even minute...\n");
+
   for(;;)
   {
+    txoff();
+    centre_freq = atof(argv[band + 4]);
+    band++;
+    if(band >= nbands)
+      band = 0;
+    setupDMATab(centre_freq, WSPR_OFFSET);
     wait_even_minute();
     txon();
+    printf("%f\n", centre_freq);
     for (i = 0; i < 162; i++) {
       txSym(wspr_symbols[i], WSPR_SYMTIME);
-      //txSym(atof(argv[5]), WSPR_SYMTIME);
     }
-    txoff();
   }
   return 0;
 }
