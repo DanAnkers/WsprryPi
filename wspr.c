@@ -28,6 +28,8 @@ Credits:
   in WsprryPi a WSPR beacon for LF and MF bands. Guido PE1NNZ extended 
   this effort with DMA based PWM modulation of fractional divider that was 
   part of PiFM, allowing to operate the WSPR beacon also on HF and VHF bands.
+  In addition time-synchronisation and double amount of power output was 
+  implemented. 
   
   [1] PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
 
@@ -110,7 +112,7 @@ void go_wspr(void);                     // start WSPR beacon mode
 void go_wspr_tx(void);          // set cube in wspr tx mode
 
 #define CAL_PWM_CLK   (31500000 * 1.078431372549019607843137254902)         // calibrated PWM clock
-#define CAL_PLL_CLK   (500000000.0 * 0.99993636816400312423958564646841)    // calibrated PLL reference clock 
+#define CAL_PLL_CLK   (500000000.0 * 0.99993693630159671751418358660315)    // calibrated PLL reference clock 
 
 #define WSPR_SYMTIME (8192.0/12000.0)  // symbol time
 #define WSPR_OFFSET  (1.0/WSPR_SYMTIME)     //  tone separation
@@ -277,7 +279,7 @@ void txSym(int sym, float tsym)
     int clocksPerIter = (int)(CAL_PWM_CLK*tsym/(float)iter);
     //printf("tsym=%f iter=%u clocksPerIter=%u tsymerr=%f\n", tsym, iter, clocksPerIter, tsym - ((float)clocksPerIter*(float)iter)/CAL_PWM_CLK );
     int i = sym*3 + 511;
-    double dval = fracs[i]; // ratio between 0 and 1 of frequency position that is in between two fractional clock divider bins
+    double dval = -1.0 * fracs[i] - 0.5; // ratio between -0.5 and 0.5 of frequency position that is in between two fractional clock divider bins (frequency goes up for dval from -0.5 to 0.5)
     int k = (int)(round(dval));  // integer component
     double frac = (dval - (double)k)/2 + 0.5;
     unsigned int fracval = (frac*clocksPerIter);
@@ -334,7 +336,7 @@ void setupDMATab( float centerFreq, double symOffset ){
        printf("warning: PWM/PLL fractional divider has not enough resolution: %f while %f is required , try lower frequency.\n", resolution, symOffset);
        exit(0);
      }
-     fracs[i] = -1*freq_corr/delta;
+     fracs[i] = freq_corr/delta;
      //printf("i=%u f=%f fa=%f corr=%f delta=%f percfrac=%f int=%u frac=%u tuning_word=%u resolution=%fimHz\n", i, freq, actual_freq, freq_corr, delta, fracs[i], integer_part, fractional_part, tuning_word, resolution *1000);
    }
 }
