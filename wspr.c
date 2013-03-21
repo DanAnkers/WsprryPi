@@ -112,7 +112,7 @@ void go_wspr(void);                     // start WSPR beacon mode
 void go_wspr_tx(void);          // set cube in wspr tx mode
 
 #define CAL_PWM_CLK   (31500000 * 1.078431372549019607843137254902)         // calibrated PWM clock
-#define CAL_PLL_CLK   (500000000.0 * 0.99993693630159671751418358660315)    // calibrated PLL reference clock 
+#define CAL_PLL_CLK   (500000000.0 * 0.99993821461118230238202895190632)    // calibrated PLL reference clock 
 
 #define WSPR_SYMTIME (8192.0/12000.0)  // symbol time
 #define WSPR_OFFSET  (1.0/WSPR_SYMTIME)     //  tone separation
@@ -143,7 +143,7 @@ volatile unsigned *allof7e = NULL;
 
 #define GPIO_SET *(gpio+7)  // sets   bits which are 1 ignores bits which are 0
 #define GPIO_CLR *(gpio+10) // clears bits which are 1 ignores bits which are 0
-#define GPIO_GET *(gpio+13)  // sets   bits which are 1 ignores bits which are 0
+#define GPIO_GET *(gpio+13) // sets   bits which are 1 ignores bits which are 0
 
 #define ACCESS(base) *(volatile int*)((int)allof7e+base-0x7e000000)
 #define SETBIT(base, bit) ACCESS(base) |= 1<<bit
