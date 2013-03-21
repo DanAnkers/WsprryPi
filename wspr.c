@@ -50,10 +50,17 @@ To use:
   command. Reception reports are logged on Weak Signal Propagation Reporter 
   Network: http://wsprnet.org/drupal/wsprnet/spots
 
-  As the WSPR band is only 200 Hz wide, some frequency calibration may be needed 
-  to ensure that the transmission is done within the WSPR band. You can correct
-  the frequency error manually in the command line or adjust CAL_PLL_CLK in the
-  code. 
+  Frequency calibration is REQUIRED to ensure that the WSPR transmission occurs
+  within the 200 Hz narrow band. The reference crystal on your RPi might have
+  an frequency error (which in addition is temperature dependent).
+  To calibrate, the frequency might be manually corrected on the command line 
+  or by changing the CAL_PLL_CLK value in the code. A practical way to calibrate 
+  is to tune the transmitter on the same frequency of a media wave broadcast 
+  station; keep tuning until zero beat (the constant audio tone disappears when 
+  the transmitter is exactly on the same frequency as the broadcast station),
+  and determine the frequency difference with the broadcast station. This is 
+  the frequency error that can be applied for correction while tuning on a WSPR
+  frequency.
 
 Usage: 
   sudo ./wspr <callsign> <locator> <power in dBm> <frequency in Hz>
