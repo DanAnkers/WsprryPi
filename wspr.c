@@ -105,7 +105,7 @@ void go_wspr(void);                     // start WSPR beacon mode
 void go_wspr_tx(void);          // set cube in wspr tx mode
 
 #define CAL_PWM_CLK   (31500000 * 1.078431372549019607843137254902)         // calibrated PWM clock
-#define CAL_PLL_CLK   (500000000.0 * 0.99994290179416484635001314707972)    // calibrated PLL reference clock 
+#define CAL_PLL_CLK   (500000000.0 * 0.99993565799251550864072437977875)    // calibrated PLL reference clock 
 
 #define WSPR_SYMTIME (8192.0/12000.0)  // symbol time
 #define WSPR_OFFSET  (1.0/WSPR_SYMTIME)     //  tone separation
@@ -289,11 +289,10 @@ void unSetupDMA(){
     printf("exiting\n");
     struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS(DMABASE));
     DMA0->CS =1<<31;  // reset dma controller
-   
+    txoff(); 
 }
 
 void handSig() {
-  txoff();
   exit(0);
 }
 void setupDMATab( float centerFreq, double symOffset ){
