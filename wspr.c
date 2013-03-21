@@ -110,7 +110,7 @@ void go_wspr(void);                     // start WSPR beacon mode
 void go_wspr_tx(void);          // set cube in wspr tx mode
 
 #define CAL_PWM_CLK   (31500000 * 1.078431372549019607843137254902)         // calibrated PWM clock
-#define CAL_PLL_CLK   (500000000.0 * 0.99993565799251550864072437977875)    // calibrated PLL reference clock 
+#define CAL_PLL_CLK   (500000000.0 * 0.99993636816400312423958564646841)    // calibrated PLL reference clock 
 
 #define WSPR_SYMTIME (8192.0/12000.0)  // symbol time
 #define WSPR_OFFSET  (1.0/WSPR_SYMTIME)     //  tone separation
@@ -148,6 +148,7 @@ volatile unsigned *allof7e = NULL;
 #define CLRBIT(base, bit) ACCESS(base) &= ~(1<<bit)
 #define CM_GP0CTL (0x7e101070)
 #define GPFSEL0 (0x7E200000)
+#define PADS_GPIO_0_27  (0x7e10002c)
 #define CM_GP0DIV (0x7e101074)
 #define CLKBASE (0x7E101000)
 #define DMABASE (0x7E007000)
@@ -242,6 +243,16 @@ void txon()
     SETBIT(GPFSEL0 , 14);
     CLRBIT(GPFSEL0 , 13);
     CLRBIT(GPFSEL0 , 12);
+
+    // Set GPIO drive strength, more info: http://www.scribd.com/doc/101830961/GPIO-Pads-Control2 
+    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 0;  //2mA -3.4dBm
+    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 1;  //4mA +2.1dBm
+    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 2;  //6mA +4.9dBm
+    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 3;  //8mA +6.6dBm(default)
+    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 4;  //10mA +8.2dBm
+    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 5;  //12mA +9.2dBm
+    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 6;  //14mA +10.0dBm
+    ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 7;  //16mA +10.6dBm
 
     struct GPCTL setupword = {6/*SRC*/, 1, 0, 0, 0, 1,0x5a};
     ACCESS(CM_GP0CTL) = *((int*)&setupword);
