@@ -32,6 +32,11 @@ To use:
   command. Reception reports are logged on Weak Signal Propagation Reporter
   Network: http://wsprnet.org/drupal/wsprnet/spots
 
+  As the WSPR band is only 200 Hz wide, some frequency calibration may be needed
+  to ensure that the transmission is done within the WSPR band. You can correct
+  the frequency error manually in the command line or adjust CAL_PLL_CLK in the
+  code.
+
 Usage:
   sudo ./wspr <callsign> <locator> <power in dBm> <frequency in Hz>
         e.g.: sudo ./wspr K1JT FN20 10 7040074
