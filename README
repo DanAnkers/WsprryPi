@@ -44,18 +44,6 @@ To use:
   the frequency error that can be applied for correction while tuning on a WSPR
   frequency.
 
-the actual frequency is to tune the transmitter on the frequency of a xmedium 
-  wave boradcast station for which the frequency is known. An audio tone might 
-  be audible on the receiver, which represents the frequency error. Changing 
-  the frequency of the transmitter until zero beatTuning the 
-  transmitter t
-\By listening to the receiver an 
-  audio tone might be audible which representknown frequency of an
-  medium wave broadcast station, and change the frequency of the transmitter
-  until zero beat; that is the moment that the mixing audio tone dissapear.
-  When zero beat, the transmitter is on frequency and the frequency error can
-  be read out (and corrected when other frequencies are applies).
-
 Usage:
   sudo ./wspr <callsign> <locator> <power in dBm> <frequency in Hz>
         e.g.: sudo ./wspr K1JT FN20 10 7040074
