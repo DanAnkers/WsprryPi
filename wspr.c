@@ -66,9 +66,9 @@ Installation:
   Open a terminal and execute the following commands:
    sudo apt-get install git
    git clone https://github.com/threeme3/WsprryPi.git
+   cd WsprryPi
 
 Usage: 
-  cd WsprryPi
   sudo ./wspr <callsign> <locator> <power in dBm> <frequency in Hz>
         e.g.: sudo ./wspr K1JT FN20 10 7040074
 
