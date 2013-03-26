@@ -60,8 +60,9 @@ Installation:
    cd WsprryPi
 
 Usage:
-  sudo ./wspr <callsign> <locator> <power in dBm> <frequency in Hz>
-        e.g.: sudo ./wspr K1JT FN20 10 7040074
+  sudo ./wspr <callsign> <locator> <power in dBm> [<frequency in Hz> ...]
+        e.g.: sudo ./wspr K1JT FN20 10 7040074 0 0 10140174 0 0
+        where 0 frequency represents a interval for which TX is disabled
 
   WSPR is used on the following frequencies (local restriction may apply):
      LF   137400 - 137600
