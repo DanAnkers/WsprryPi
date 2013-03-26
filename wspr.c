@@ -69,9 +69,10 @@ To use:
   the frequency error that can be applied for correction while tuning on a WSPR
   frequency.
 
-Installation:
+Installation / update:
   Open a terminal and execute the following commands:
    sudo apt-get install git
+   rm -rf WsprryPi
    git clone https://github.com/threeme3/WsprryPi.git
    cd WsprryPi
 
@@ -128,9 +129,9 @@ Reference documentation:
 #define F_XTAL       (19229581.050215044276577479844352)             // calibrated 19.2MHz XTAL frequency 
 #define F_PLLD_CLK   (26.0 * F_XTAL)                                 // 500MHz PLLD reference clock 
 
-#define N_ITER  22500  // number of PWM operations per symbol; larger values gives less spurs at the cost of frequency resolution; e.g. use 22500 for HF usage up to 30MHz, 12000 up to 50MHz, 1600 for VHF usage up to 144 Mhz, F_PWM_CLK needs to be adjusted when changing N_ITER 
-#define F_PWM_CLK    (31500000.0)   // 31.5MHz PWM clock   use with N_ITER=22500
-//#define F_PWM_CLK    (33970588.235294117647058823529413)   // 31.5MHz calibrated PWM clock   use with N_ITER=1400
+#define N_ITER  1400  // number of PWM operations per symbol; larger values gives less spurs at the cost of frequency resolution; e.g. use 22500 for HF usage up to 30MHz, 12000 up to 50MHz, 1600 for VHF usage up to 144 Mhz, F_PWM_CLK needs to be adjusted when changing N_ITER 
+//#define F_PWM_CLK    (31500000.0)   // 31.5MHz PWM clock   use with N_ITER=22500
+#define F_PWM_CLK    (33970588.235294117647058823529413)   // 31.5MHz calibrated PWM clock   use with N_ITER=1400
 
 #define WSPR_SYMTIME (8192.0/12000.0)  // symbol time
 #define WSPR_OFFSET  (1.0/WSPR_SYMTIME)     //  tone separation
@@ -768,6 +769,7 @@ int main(int argc, char *argv[])
       txon();
       for (i = 0; i < 162; i++) {
         txSym(wspr_symbols[i], WSPR_SYMTIME);
+        //txSym(atoi(argv[5]), WSPR_SYMTIME);
       } 
     }
   }

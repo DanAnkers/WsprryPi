@@ -53,9 +53,10 @@ To use:
   the frequency error that can be applied for correction while tuning on a WSPR
   frequency.
 
-Installation:
+Installation / update:
   Open a terminal and execute the following commands:
    sudo apt-get install git
+   rm -rf WsprryPi
    git clone https://github.com/threeme3/WsprryPi.git
    cd WsprryPi
 
