@@ -1,4 +1,4 @@
-Raspberry Pi bareback LF/MF/HF/VHF WSPR transmitter  <pe1nnz@amsat.org>
+ Raspberry Pi bareback LF/MF/HF/VHF WSPR transmitter  <pe1nnz@amsat.org>
 
  Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO
  port to Antanna (and LPF), operates on LF, MF, HF and VHF bands from
@@ -11,20 +11,29 @@ Credits:
   in WsprryPi a WSPR beacon for LF and MF bands. Guido PE1NNZ extended
   this effort with DMA based PWM modulation of fractional divider that was
   part of PiFM, allowing to operate the WSPR beacon also on HF and VHF bands.
+  In addition time-synchronisation and double amount of power output was
+  implemented.
 
   [1] PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
 
 To use:
-  In order to transmit legally, a HAM Radio License is required for running
+  In order to transmit legally, a HAM Radio License is REQUIRED for running
   this experiment. The output is a square wave so a low pass filter is REQUIRED.
   Connect a low-pass filter to GPIO4 (GPCLK0) and Ground pins on your
   Raspberry Pi, connect an antenna to the LPF. The GPIO4 and GND pins can be
   found on header P1 pin 7 and 9 respectively, the pin closest to P1 label is
   pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this
   link for pin layout: http://elinux.org/RPi_Low-level_peripherals
+  Examples of low-pass filters can be found here: http://www.gqrp.com/harmonic_filters.pdf
   The expected power output is 10mW (+10dBm) in a 50 Ohm load. This looks
   neglible, but when connected to a simple dipole antenna this may result in
   reception reports ranging up to several thousands of kilometers.
+  Example of low-pass filters here: http://www.gqrp.com/harmonic_filters.pdf
+  As the Raspberry Pi does not attenuate sufficiently ripple and noise
+  components in the 5V USB power supply, it is RECOMMENDED to use a regulated
+  supply that has sufficient ripple supression. Supply ripple might be seen as
+  mixing products centered around the transmit carrier repeating every 100/120Hz
+  for respectively 50/60Hz mains.
 
   This software is using system time to determine the start of a WSPR
   transmissions, so keep the system time synchronised within 1sec precision,
@@ -32,15 +41,15 @@ To use:
   command. Reception reports are logged on Weak Signal Propagation Reporter
   Network: http://wsprnet.org/drupal/wsprnet/spots
 
-  Frequency calibration is REQUIRED to ensure that the WSPR transmission occurs 
+  Frequency calibration is REQUIRED to ensure that the WSPR transmission occurs
   within the 200 Hz narrow band. The reference crystal on your RPi might have
   an frequency error (which in addition is temperature dependent).
-  To calibrate, the frequency might be manually corrected on the command line 
-  or by changing the CAL_PLL_CLK value in the code. A practical way to calibrate  
-  is to tune the transmitter on the same frequency of a medium wave AM broadcast 
-  station; keep tuning until zero beat (the constant audio tone disappears when 
-  the transmitter is exactly on the same frequency as the broadcast station), 
-  and determine the frequency difference with the broadcast station. This is 
+  To calibrate, the frequency might be manually corrected on the command line
+  or by changing the F_XTAL value in the code. A practical way to calibrate
+  is to tune the transmitter on the same frequency of a medium wave AM broadcast
+  station; keep tuning until zero beat (the constant audio tone disappears when
+  the transmitter is exactly on the same frequency as the broadcast station),
+  and determine the frequency difference with the broadcast station. This is
   the frequency error that can be applied for correction while tuning on a WSPR
   frequency.
 
@@ -72,6 +81,7 @@ Usage:
       2m  144490400 -144490600
 
 Compile:
+  sudo apt-get install gcc
   gcc -lm -std=c99 wspr.c -owspr
 
 

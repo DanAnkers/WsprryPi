@@ -33,16 +33,23 @@ Credits:
   [1] PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
 
 To use:
-  In order to transmit legally, a HAM Radio License is required for running 
+  In order to transmit legally, a HAM Radio License is REQUIRED for running 
   this experiment. The output is a square wave so a low pass filter is REQUIRED.
   Connect a low-pass filter to GPIO4 (GPCLK0) and Ground pins on your 
   Raspberry Pi, connect an antenna to the LPF. The GPIO4 and GND pins can be 
   found on header P1 pin 7 and 9 respectively, the pin closest to P1 label is 
   pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this 
   link for pin layout: http://elinux.org/RPi_Low-level_peripherals
+  Examples of low-pass filters can be found here: http://www.gqrp.com/harmonic_filters.pdf
   The expected power output is 10mW (+10dBm) in a 50 Ohm load. This looks
   neglible, but when connected to a simple dipole antenna this may result in 
   reception reports ranging up to several thousands of kilometers.
+  Example of low-pass filters here: http://www.gqrp.com/harmonic_filters.pdf
+  As the Raspberry Pi does not attenuate sufficiently ripple and noise
+  components in the 5V USB power supply, it is RECOMMENDED to use a regulated 
+  supply that has sufficient ripple supression. Supply ripple might be seen as 
+  mixing products centered around the transmit carrier repeating every 100/120Hz 
+  for respectively 50/60Hz mains.
 
   This software is using system time to determine the start of a WSPR 
   transmissions, so keep the system time synchronised within 1sec precision, 
@@ -54,7 +61,7 @@ To use:
   within the 200 Hz narrow band. The reference crystal on your RPi might have
   an frequency error (which in addition is temperature dependent).
   To calibrate, the frequency might be manually corrected on the command line 
-  or by changing the CAL_PLL_CLK value in the code. A practical way to calibrate 
+  or by changing the F_XTAL value in the code. A practical way to calibrate 
   is to tune the transmitter on the same frequency of a medium wave AM broadcast 
   station; keep tuning until zero beat (the constant audio tone disappears when 
   the transmitter is exactly on the same frequency as the broadcast station),
@@ -69,8 +76,9 @@ Installation:
    cd WsprryPi
 
 Usage: 
-  sudo ./wspr <callsign> <locator> <power in dBm> <frequency in Hz>
-        e.g.: sudo ./wspr K1JT FN20 10 7040074
+  sudo ./wspr <callsign> <locator> <power in dBm> [<frequency in Hz> ...]
+        e.g.: sudo ./wspr K1JT FN20 10 7040074 0 0 10140174 0 0
+        where 0 frequency represents a interval for which TX is disabled
 
   WSPR is used on the following frequencies (local restriction may apply):
      LF   137400 - 137600
@@ -90,12 +98,16 @@ Usage:
       2m  144490400 -144490600
 
 Compile:
+  sudo apt-get install gcc
   gcc -lm -std=c99 wspr.c -owspr
 
+Reference documentation:
+  http://www.raspberrypi.org/wp-content/uploads/2012/02/BCM2835-ARM-Peripherals.pdf
+  http://www.scribd.com/doc/127599939/BCM2835-Audio-clocks
+  http://www.scribd.com/doc/101830961/GPIO-Pads-Control2
+  https://github.com/mgottschlag/vctools/blob/master/vcdb/cm.yaml
+
 */
-
-
-
 
 #include <stdio.h>
 #include <string.h>
@@ -113,18 +125,12 @@ Compile:
 #include <malloc.h>
 #include <time.h>
 
-void Code_msg(char[], unsigned long int*, unsigned long int*);      // encode callsign, locator and power
-void Pack_msg(unsigned long int, unsigned long int, unsigned char[]);// packed 50 bits in 11 bytes
-void Generate_parity(unsigned char[], unsigned char[]);  // generate 162 parity bits
-void Interleave( unsigned char[], unsigned char[]);  // interleave the 162 parity bits
-void Synchronise(unsigned char[], unsigned char[]);  // synchronize with a pseudo random pattern
+#define F_XTAL       (19229581.050215044276577479844352)             // calibrated 19.2MHz XTAL frequency 
+#define F_PLLD_CLK   (26.0 * F_XTAL)                                 // 500MHz PLLD reference clock 
 
-void code_wspr(char* wspr_message, unsigned char* wspr_symbol);         // encode the wspr message
-void go_wspr(void);                     // start WSPR beacon mode
-void go_wspr_tx(void);          // set cube in wspr tx mode
-
-#define CAL_PWM_CLK   (31500000 * 1.078431372549019607843137254902)         // calibrated PWM clock
-#define CAL_PLL_CLK   (500000000.0 * 0.99993821461118230238202895190632)    // calibrated PLL reference clock 
+#define N_ITER  22500  // number of PWM operations per symbol; larger values gives less spurs at the cost of frequency resolution; e.g. use 22500 for HF usage up to 30MHz, 12000 up to 50MHz, 1600 for VHF usage up to 144 Mhz, F_PWM_CLK needs to be adjusted when changing N_ITER 
+#define F_PWM_CLK    (31500000.0)   // 31.5MHz PWM clock   use with N_ITER=22500
+//#define F_PWM_CLK    (33970588.235294117647058823529413)   // 31.5MHz calibrated PWM clock   use with N_ITER=1400
 
 #define WSPR_SYMTIME (8192.0/12000.0)  // symbol time
 #define WSPR_OFFSET  (1.0/WSPR_SYMTIME)     //  tone separation
@@ -283,34 +289,33 @@ void setfreq(long freq)
     ACCESS(CM_GP0DIV) = (0x5a << 24) + freq;
 }
 
-void txSym(int sym, float tsym)
+void txSym(int sym, double tsym)
 {
     int bufPtr=0;
     short data;
-    int iter = 1400; //4000
-    int clocksPerIter = (int)(CAL_PWM_CLK*tsym/(float)iter);
-    //printf("tsym=%f iter=%u clocksPerIter=%u tsymerr=%f\n", tsym, iter, clocksPerIter, tsym - ((float)clocksPerIter*(float)iter)/CAL_PWM_CLK );
+    int clocksPerIter = (int)((F_PWM_CLK/((double)N_ITER)) * tsym);
+    //printf("tsym=%f iter=%u clocksPerIter=%u tsymerr=%f\n", tsym, N_ITER, clocksPerIter, tsym - ((float)clocksPerIter*(float)N_ITER)/F_PWM_CLK );
     int i = sym*3 + 511;
     double dval = -1.0 * fracs[i] - 0.5; // ratio between -0.5 and 0.5 of frequency position that is in between two fractional clock divider bins (frequency goes up for dval from -0.5 to 0.5)
     int k = (int)(round(dval));  // integer component
     double frac = (dval - (double)k)/2 + 0.5;
     unsigned int fracval = (frac*clocksPerIter);
     //printf("i=%d *i=%u %u fracval=%u dval=%f sym=%d\n", i, ((int*)(constPage.v))[i-1], ((int*)(constPage.v))[i+1], fracval, dval, sym); 
-    for(int j=0; j!=iter; j++){
+    for(int j=0; j!=N_ITER; j++){
         bufPtr++;
-        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(1000);
+        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(100);
         ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (int)constPage.p + (i-1)*4;
 
         bufPtr++;
-        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(1000);
+        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(100);
         ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = clocksPerIter-fracval;
 
         bufPtr++;
-        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(1000);
+        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(100);
         ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (int)constPage.p + (i+1)*4;
 
         bufPtr=(bufPtr+1) % (1024);
-        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(1000);
+        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(100);
         ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = fracval;
     }
 }
@@ -325,31 +330,33 @@ void unSetupDMA(){
 void handSig() {
   exit(0);
 }
-void setupDMATab( float centerFreq, double symOffset ){
+void setupDMATab( float centerFreq, double symOffset, double tsym, int nsym ){
    // make data page contents - it's essientially 1024 different commands for the
    // DMA controller to send to the clock module at the correct time.
   for (int i=1; i<1023; i+=3){
      double freq = centerFreq + ((double)(-511 + i))*symOffset/3.0;
-     double divisor = CAL_PLL_CLK/freq;
+     double divisor = F_PLLD_CLK/freq;
      unsigned long integer_part = (unsigned long) divisor;
      unsigned long fractional_part = (divisor - integer_part) * (1 << 12);
      unsigned long tuning_word = (0x5a << 24) + integer_part * (1 << 12) + fractional_part;
      if(fractional_part == 0 || fractional_part == 1023){
-       printf("warning: symbol %u unusable because fractional divider is out of range, try near frequency.\n", i/3);
+       if((-511 + i) >= 0 && (-511 + i) <= (nsym * 3)) 
+         printf("warning: symbol %u unusable because fractional divider is out of range, try near frequency.\n", i/3);
      }
      ((int*)(constPage.v))[i-1] = tuning_word - 1;
      ((int*)(constPage.v))[i] = tuning_word;
      ((int*)(constPage.v))[i+1] = tuning_word + 1;
-     double actual_freq = CAL_PLL_CLK/((double)integer_part + (double)fractional_part/(double)(1<<12));
+     double actual_freq = F_PLLD_CLK/((double)integer_part + (double)fractional_part/(double)(1<<12));
      double freq_corr = freq - actual_freq;
-     double delta = CAL_PLL_CLK/((double)integer_part + (double)fractional_part/(double)(1<<12)) - CAL_PLL_CLK/((double)integer_part + ((double)fractional_part+1.0)/(double)(1<<12));
-     double resolution = 2.0 * delta / pow(2,32);
+     double delta = F_PLLD_CLK/((double)integer_part + (double)fractional_part/(double)(1<<12)) - F_PLLD_CLK/((double)integer_part + ((double)fractional_part+1.0)/(double)(1<<12));
+     int clocksPerIter = (int)((F_PWM_CLK/((double)N_ITER)) * tsym);
+     double resolution = 2.0 * delta / ((double)clocksPerIter);
      if(resolution > symOffset ){
-       printf("warning: PWM/PLL fractional divider has not enough resolution: %f while %f is required , try lower frequency.\n", resolution, symOffset);
+       printf("warning: PWM/PLL fractional divider has not enough resolution: %fHz while %fHz is required, try lower frequency or decrease N_ITER in code to achieve more resolution.\n", resolution, symOffset);
        exit(0);
      }
      fracs[i] = freq_corr/delta;
-     //printf("i=%u f=%f fa=%f corr=%f delta=%f percfrac=%f int=%u frac=%u tuning_word=%u resolution=%fimHz\n", i, freq, actual_freq, freq_corr, delta, fracs[i], integer_part, fractional_part, tuning_word, resolution *1000);
+     //printf("i=%u f=%f fa=%f corr=%f delta=%f percfrac=%f int=%u frac=%u tuning_word=%u resolution=%fmHz\n", i, freq, actual_freq, freq_corr, delta, fracs[i], integer_part, fractional_part, tuning_word, resolution *1000);
    }
 }
 
@@ -397,10 +404,11 @@ void setupDMA(){
    ((struct CB*)(instrs[1023].v))->NEXTCONBK = (int)instrs[0].p;
 
    // set up a clock for the PWM
-   ACCESS(CLKBASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000026;
+   ACCESS(CLKBASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000026;  // Source=PLLD and disable
    usleep(1000);
-   ACCESS(CLKBASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002800;
-   ACCESS(CLKBASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000016;
+//   ACCESS(CLKBASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002800;
+   ACCESS(CLKBASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002000;  // set PWM div to 2, for 250MHz 
+   ACCESS(CLKBASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000016;  // Source=PLLD and enable 
    usleep(1000);
 
    // set up pwm
@@ -709,9 +717,10 @@ void wait_even_minute()
   for(;;){
     time(&t); 
     ptm = gmtime(&t);
-    if((ptm->tm_min % 2) == 0 && ptm->tm_sec == 1) break;
+    if((ptm->tm_min % 2) == 0 && ptm->tm_sec == 0) break;
     usleep(1000);
   }
+  usleep(1000000); // wait another second
 }
 
 int main(int argc, char *argv[])
@@ -725,8 +734,8 @@ int main(int argc, char *argv[])
   int band = 0;
 
   if(argc < 5){
-    printf("Usage: wspr <callsign> <locator> <power in dBm> [<frequency in Hz> ...]\n");
-    printf("\te.g.: sudo ./wspr PE1NNZ JO21 10 7040074\n");
+    printf("Usage: wspr <callsign> <locator> <power in dBm> [<frequency in Hz or 0 for interval> ...]\n");
+    printf("\te.g.: sudo ./wspr PE1NNZ JO21 10 7040074 0 0 10140174 0 0\n");
     printf("\tchoose freq in range +/-100 Hz around one of center frequencies: 137500, 475700, 1838100, 3594100, 5288700, 7040100, 10140200, 14097100, 18106100, 21096100, 24926100, 28126100, 50294500, 70092500, 144490500 Hz\n");
     return 1;
   }
@@ -752,12 +761,14 @@ int main(int argc, char *argv[])
     band++;
     if(band >= nbands)
       band = 0;
-    setupDMATab(centre_freq, WSPR_OFFSET);
+    if(centre_freq) setupDMATab(centre_freq, WSPR_OFFSET, WSPR_SYMTIME, 4);
     wait_even_minute();
-    txon();
     printf("%f\n", centre_freq);
-    for (i = 0; i < 162; i++) {
-      txSym(wspr_symbols[i], WSPR_SYMTIME);
+    if(centre_freq){
+      txon();
+      for (i = 0; i < 162; i++) {
+        txSym(wspr_symbols[i], WSPR_SYMTIME);
+      } 
     }
   }
   return 0;
