@@ -19,12 +19,12 @@ Credits:
 To use:
   In order to transmit legally, a HAM Radio License is REQUIRED for running
   this experiment. The output is a square wave so a low pass filter is REQUIRED.
-  Connect a low-pass filter to GPIO4 (GPCLK0) and Ground pins on your
-  Raspberry Pi, connect an antenna to the LPF. The GPIO4 and GND pins can be
-  found on header P1 pin 7 and 9 respectively, the pin closest to P1 label is
-  pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this
-  link for pin layout: http://elinux.org/RPi_Low-level_peripherals
-  Examples of low-pass filters can be found here: http://www.gqrp.com/harmonic_filters.pdf
+  Connect a low-pass filter with decoupling C to GPIO4 (GPCLK0) and Ground pins
+  on your Raspberry Pi, connect an antenna to the LPF. The GPIO4 and GND pins
+  can be found on header P1 pin 7 and 9 respectively, the pin closest to P1 label
+  is pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this
+  link for pin layout: http://elinux.org/RPi_Low-level_peripherals Examples of
+  low-pass filters can be found here: http://www.gqrp.com/harmonic_filters.pdf
   The expected power output is 10mW (+10dBm) in a 50 Ohm load. This looks
   neglible, but when connected to a simple dipole antenna this may result in
   reception reports ranging up to several thousands of kilometers.
@@ -43,7 +43,7 @@ To use:
 
   Frequency calibration is REQUIRED to ensure that the WSPR transmission occurs
   within the 200 Hz narrow band. The reference crystal on your RPi might have
-  an frequency error (which in addition is temperature dependent).
+  an frequency error (which in addition is temperature dependent -1.3Hz/degC@10MHz).
   To calibrate, the frequency might be manually corrected on the command line
   or by changing the F_XTAL value in the code. A practical way to calibrate
   is to tune the transmitter on the same frequency of a medium wave AM broadcast
