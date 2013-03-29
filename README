@@ -96,10 +96,12 @@ Compile:
 
 Issues:
   Some users are reporting that the program never stops transmitting, even
-  intervals for disabled tx are programmed. Currently it is unclear why 
-  some users experience  this issue, it seems to be related with newest
-  firmware and Type B rev 2 boards. It is suggested that dynamic overclocking
-  feature could interfere here, so make sure overclocking is disabled on your
-  RPi. Let me know if you experience similar issue or found a resolution.
+  when intervals for disabled tx are programmed, in addition there are sidebands
+  visible. Currently it is unclear why only some users experience this issue.
+  It seems to have some relationship with latest weezy OS distribution and 
+  firmware on RPi type B rev 2 boards. A possible cause could be the dynamic
+  overclocking feature, so make sure that over locking is disabled and a
+  standard 700 ARM clock is selected.
+  Please let me know if you experience similar issue or found a resolution.
 
 
