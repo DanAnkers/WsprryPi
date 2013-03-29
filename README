@@ -94,4 +94,12 @@ Compile:
   sudo apt-get install gcc
   gcc -lm -std=c99 wspr.c -owspr
 
+Issues:
+  Some users are reporting that the program never stops transmitting, even
+  intervals for disabled tx are programmed. Currently it is unclear why 
+  some users experience  this issue, it seems to be related with newest
+  firmware and Type B rev 2 boards. It is suggested that dynamic overclocking
+  feature could interfere here, so make sure overclocking is disabled on your
+  RPi. Let me know if you experience similar issue or found a resolution.
+
 
