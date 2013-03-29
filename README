@@ -100,7 +100,7 @@ Issues:
   visible. Currently it is unclear why only some users experience this issue.
   It seems to have some relationship with latest weezy OS distribution and 
   firmware on RPi type B rev 2 boards. A possible cause could be the dynamic
-  overclocking feature, so make sure that over locking is disabled and a
+  overclocking feature, so make sure that overclocking is disabled and a
   standard 700 ARM clock is selected.
   Please let me know if you experience similar issue or found a resolution.
   Guido, pe1nnz@amsat.org
