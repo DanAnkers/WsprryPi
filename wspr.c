@@ -74,7 +74,7 @@ To use:
   a DC component of 1.6V, DO NOT short-circuit or place a resistive (dummy) load 
   straight on the GPIO4 pin, as it may draw too much current. Instead, use a 
   decoupling capacitor to remove DC component when connecting the output 
-  dummy loads, transformers, loopantennas, etc. DO NOT expose the GPIO4 pin to
+  dummy loads, transformers, ntennas, etc. DO NOT expose the GPIO4 pin to
   static voltages or voltages exceeding the 0 to 3.3V logic range.
 
 Installation / update:
