@@ -19,21 +19,20 @@ Credits:
 To use:
   In order to transmit legally, a HAM Radio License is REQUIRED for running
   this experiment. The output is a square wave so a low pass filter is REQUIRED.
-  Connect a low-pass filter with decoupling C to GPIO4 (GPCLK0) and Ground pins
-  on your Raspberry Pi, connect an antenna to the LPF. The GPIO4 and GND pins
-  can be found on header P1 pin 7 and 9 respectively, the pin closest to P1 label
-  is pin 1 and its  3rd and 4th neighbour is pin 7 and 9 respectively, see this
+  Connect a low-pass filter (via decoupling C) to GPIO4 (GPCLK0) and Ground pin
+  of your Raspberry Pi, connect an antenna to the LPF. The GPIO4 and GND pins
+  are found on header P1 pin 7 and 9 respectively, the pin closest to P1 label
+  is pin 1 and its 3rd and 4th neighbour is pin 7 and 9 respectively, see this
   link for pin layout: http://elinux.org/RPi_Low-level_peripherals Examples of
   low-pass filters can be found here: http://www.gqrp.com/harmonic_filters.pdf
   The expected power output is 10mW (+10dBm) in a 50 Ohm load. This looks
   neglible, but when connected to a simple dipole antenna this may result in
   reception reports ranging up to several thousands of kilometers.
   Example of low-pass filters here: http://www.gqrp.com/harmonic_filters.pdf
-  As the Raspberry Pi does not attenuate sufficiently ripple and noise
-  components in the 5V USB power supply, it is RECOMMENDED to use a regulated
-  supply that has sufficient ripple supression. Supply ripple might be seen as
-  mixing products centered around the transmit carrier repeating every 100/120Hz
-  for respectively 50/60Hz mains.
+  As the Raspberry Pi does not attenuate ripple and noise components from the
+  5V USB power supply, it is RECOMMENDED to use a regulated supply that has
+  sufficient ripple supression. Supply ripple might be seen as mixing products
+  products centered around the transmit carrier typically at 100/120Hz.
 
   This software is using system time to determine the start of a WSPR
   transmissions, so keep the system time synchronised within 1sec precision,
@@ -52,6 +51,15 @@ To use:
   and determine the frequency difference with the broadcast station. This is
   the frequency error that can be applied for correction while tuning on a WSPR
   frequency.
+
+  DO NOT expose GPIO4 to voltages or currents that are above the specified
+  Absolute Maximum limits. GPIO4 outputs a digital clock in 3V3 logic, with a
+  maximum current of 16mA. As there is no current protection available and
+  a DC component of 1.6V, DO NOT short-circuit or place a resistive (dummy) load
+  straight on the GPIO4 pin, as it may draw too much current. Instead, use a
+  decoupling capacitor to remove DC component when connecting the output
+  dummy loads, transformers, loopantennas, etc. DO NOT expose the GPIO4 pin to
+  static voltages or voltages exceeding the 0 to 3.3V logic range.
 
 Installation / update:
   Open a terminal and execute the following commands:
