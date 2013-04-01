@@ -53,10 +53,13 @@ To use:
   This software is using system time to determine the start of a WSPR 
   transmissions, so keep the system time synchronised within 1sec precision, 
   i.e. use NTP network time synchronisation or set time manually with date 
-  command. Reception reports are logged on Weak Signal Propagation Reporter 
-  Network: http://wsprnet.org/drupal/wsprnet/spots
+  command. A WSPR broadcast starts on even minute and takes 2 minutes for WSPR-2 
+  or starts at :00,:15,:30,:45 and takes 15 minutes for WSPR-15. It contains 
+  a callsign, 4-digit Maidenhead square locator and transmission power.
+  Reception reports can be viewed on Weak Signal Propagation Reporter Network 
+  at: http://wsprnet.org/drupal/wsprnet/spots 
 
-  Frequency calibration is REQUIRED to ensure that the WSPR transmission occurs
+  Frequency calibration is REQUIRED to ensure that the WSPR-2 transmission occurs
   within the 200 Hz narrow band. The reference crystal on your RPi might have
   an frequency error (which in addition is temp. dependent -1.3Hz/degC @10MHz).
   To calibrate, the frequency might be manually corrected on the command line 
@@ -74,7 +77,7 @@ To use:
   a DC component of 1.6V, DO NOT short-circuit or place a resistive (dummy) load 
   straight on the GPIO4 pin, as it may draw too much current. Instead, use a 
   decoupling capacitor to remove DC component when connecting the output 
-  dummy loads, transformers, ntennas, etc. DO NOT expose the GPIO4 pin to
+  dummy loads, transformers, antennas, etc. DO NOT expose the GPIO4 pin to
   static voltages or voltages exceeding the 0 to 3.3V logic range.
 
 Installation / update:
@@ -85,14 +88,18 @@ Installation / update:
    cd WsprryPi
 
 Usage: 
-  sudo ./wspr <callsign> <locator> <power in dBm> [<frequency in Hz> ...]
-        e.g.: sudo ./wspr K1JT FN20 10 7040074 0 0 10140174 0 0
-        where 0 frequency represents a interval for which TX is disabled
+  sudo ./wspr <[prefix]/callsign[/suffix]> <locator> <power in dBm> [<frequency in Hz> ...]
+        e.g.: sudo ./wspr PA/K1JT JO21 10 7040074 0 0 10140174 0 0
+        where 0 frequency represents a interval for which TX is disabled,
+        wspr-2 or wspr-15 mode selection based on specified frequency.
 
   WSPR is used on the following frequencies (local restriction may apply):
      LF   137400 - 137600
+          137600 - 137625 (WSPR-15)
      MF   475600 - 475800
+          475800 - 475825 (WSPR-15)
     160m  1838000 - 1838200
+          1838200 - 1838225 (WSPR-15)
      80m  3594000 - 3594200
      60m  5288600 - 5288800
      40m  7040000 - 7040200
@@ -142,7 +149,6 @@ Reference documentation:
 #define F_PWM_CLK    (33970588.235294117647058823529413)   // 31.5MHz calibrated PWM clock   use with N_ITER=1400
 
 #define WSPR_SYMTIME (8192.0/12000.0)  // symbol time
-#define WSPR_OFFSET  (1.0/WSPR_SYMTIME)     //  tone separation
 
 #define POLYNOM_1 0xf2d05351    // polynoms for
 #define POLYNOM_2 0xe4613c47    // parity generator
@@ -503,230 +509,112 @@ void setup_gpios()
 
 }
 
-/*
-WSPR encoding module:
-Thanks to K1JT, G4JNT and PE1NNZ for publishing
-helping infos.
-
-Encoding process is in 5 steps:
-   * bits packing of user message in 50 bits
-   * store the 50 bits dans 11 octets (88 bits and only 81 useful)
-   * convolutionnal encoding with two pariy generators (-> 162 bits)
-   * interleaving of the 162 bits with bit-reverse technique
-   * synchronisation with a psudo-random vector to obtain the
-      162 symbols defining one frequency of 4.
-
- F8CHK 29/03/2011                              */
-
-void
-Code_msg (char usr_message[], unsigned long int *N, unsigned long int *M)
-{
-  unsigned long int n, m;
-  unsigned int i, j, power, callsign_length;
-
-  char callsign[7] = "",	// callsign string
-    locator[5] = "",		// locator string
-    power_str[3] = "";		// power string
-
-
-  strcpy (callsign, "      ");	// filling with spaces
-
-  i = 0;
-  while (usr_message[i] != ' ')
-    {
-      callsign[i] = islower(usr_message[i])?toupper(usr_message[i]):usr_message[i];	// extract callsign
-      i++;
+void strupr(char *str) 
+{   while(*str) 
+    { 
+        *str = toupper(*str); 
+        str++; 
     }
-  callsign_length = i;
-
-  i++;
-  j = 0;
-  while (usr_message[i] != ' ')
-    locator[j++] = islower(usr_message[i])?toupper(usr_message[i++]):usr_message[i++];	// extract locator
-  locator[j] = 0;
-
-  i++;
-  j = 0;
-  while (usr_message[i] != 0)
-    power_str[j++] = usr_message[i++];	// extract power
-  power_str[j] = 0;
-
-  power = atoi (power_str);	// power needs to be an integer
-
-  printf("Call: %s / Locator: %s / Power: %ddBm\n", callsign, locator, power);
-
-  // Place a space in first position if third character is not a digit
-  if (!isdigit (callsign[2]))
-    {
-      for (i = callsign_length; i > 0; i--)
-	callsign[i] = callsign[i - 1];
-      callsign[0] = ' ';
-    }
-
-  // callsign encoding:  
-  // numbers have a value between 0 and 9 
-  // and letters a value between 10 and 35
-  // spaces a value of 36
-  n = (callsign[0] >= '0'
-       && callsign[0] <= '9' ? callsign[0] - '0' : callsign[0] ==
-       ' ' ? 36 : callsign[0] - 'A' + 10);
-  n = n * 36 + (callsign[1] >= '0'
-		&& callsign[1] <= '9' ? callsign[1] - '0' : callsign[1] ==
-		' ' ? 36 : callsign[1] - 'A' + 10);
-  n = n * 10 + (callsign[2] - '0');	// only number (0-9)
-  n = 27 * n + (callsign[3] == ' ' ? 26 : callsign[3] - 'A');	// only space or letter
-  n = 27 * n + (callsign[4] == ' ' ? 26 : callsign[4] - 'A');
-  n = 27 * n + (callsign[5] == ' ' ? 26 : callsign[5] - 'A');
-
-  // Locator encoding
-  m =
-    (179 - 10 * (locator[0] - 65) - (locator[2] - 48)) * 180 +
-    10 * (locator[1] - 65) + locator[3] - 48;
-
-  // Power encoding
-  m = m * 128 + power + 64;
-
-  *N = n;
-  *M = m;
 }
 
-void
-Pack_msg (unsigned long int N, unsigned long int M, unsigned char c[])
+void wspr(char* c, char* l, char* dbm, unsigned char* symbols)
 {
-// Bit packing
-// Store in 11 characters because we need 81 bits for FEC correction
-  c[0] = N >> 20;		// Callsign
-  c[1] = N >> 12;
-  c[2] = N >> 4;
-  c[3] = N;
-  c[3] = c[3] << 4;
+   // pack prefix in nadd, call in n1, grid, dbm in n2 
+   static int count = 0;
+   strupr(c);
+   unsigned long ng,nadd=0;
 
-  c[3] = c[3] | (M >> 18);	// locator and power
-  c[4] = M >> 10;
-  c[5] = M >> 2;
-  c[6] = M & 0x03;
-  c[6] = c[6] << 6;
+   if(strchr(c, '/')){ //prefix-suffix
+     nadd=2;
+     int i=strchr(c, '/')-c; //stroke position 
+     int n=strlen(c)-i-1; //suffix len, prefix-call len
+     if(n==1) ng=60000-32768+(c[i+1]>='0'&&c[i+1]<='9'?c[i+1]-'0':c[i+1]==' '?38:c[i+1]-'A'+10); // suffix /A to /Z, /0 to /9
+     if(n==2) ng=60000+26+10*(c[i+1]-'0')+(c[i+2]-'0'); // suffix /10 to /99
+     if(n>2){ // prefix EA8/, right align
+       ng=(i<3?36:c[i-3]>='0'&&c[i-3]<='9'?c[i-3]-'0':c[i-3]-'A'+10);
+       ng=37*ng+(i<2?36:c[i-2]>='0'&&c[i-2]<='9'?c[i-2]-'0':c[i-2]-'A'+10);
+       ng=37*ng+(i<1?36:c[i-1]>='0'&&c[i-1]<='9'?c[i-1]-'0':c[i-1]-'A'+10);
+       if(ng<32768) nadd=1; else ng=ng-32768;
+       c=c+i+1;
+     }
+   }
 
-  c[7] = 0;			// always at 0
-  c[8] = 0;
-  c[9] = 0;
-  c[10] = 0;
+   int i=(isdigit(c[2])?2:isdigit(c[1])?1:0); //last prefix digit
+   int n=strlen(c)-i-1; //2nd part of call len
+   unsigned long n1;
+   n1=(i<2?36:c[i-2]>='0'&&c[i-2]<='9'?c[i-2]-'0':c[i-2]-'A'+10);
+   n1=36*n1+(i<1?36:c[i-1]>='0'&&c[i-1]<='9'?c[i-1]-'0':c[i-1]-'A'+10);
+   n1=10*n1+c[i]-'0';
+   n1=27*n1+(n<1?26:c[i+1]-'A');
+   n1=27*n1+(n<2?26:c[i+2]-'A');
+   n1=27*n1+(n<3?26:c[i+3]-'A');
+  
+   if(count++ % 2) nadd=0;
+   if(!nadd){ 
+     strupr(l); //grid square Maidenhead locator (uppercase)
+     ng=180*(179-10*(l[0]-'A')-(l[2]-'0'))+10*(l[1]-'A')+(l[3]-'0');
+   }
+   int p = atoi(dbm);    //EIRP in dBm={0,3,7,10,13,17,20,23,27,30,33,37,40,43,47,50,53,57,60}
+   int corr[]={0,-1,1,0,-1,2,1,0,-1,1};
+   p=p>60?60:p<0?0:p+corr[p%10];
+   unsigned long n2=(ng<<7)|(p+64+nadd);
+
+   // pack n1,n2,zero-tail into 50 bits
+   char packed[11] = {n1>>20, n1>>12, n1>>4, (n1&0x0f)<<4|(n2>>18)&0x0f, 
+n2>>10, n2>>2, (n2&0x03)<<6, 0, 0, 0, 0};
+
+   // convolutional encoding K=32, r=1/2, Layland-Lushbaugh polynomials
+   int k = 0;
+   int j,s;
+   int nstate = 0;
+   unsigned char symbol[176];
+   for(j=0;j!=sizeof(packed);j++){
+      for(i=7;i>=0;i--){
+         unsigned long poly[2] = { 0xf2d05351L, 0xe4613c47L };
+         nstate = (nstate<<1) | ((packed[j]>>i)&1);
+         for(s=0;s!=2;s++){   //convolve
+            unsigned long n = nstate & poly[s];
+            int even = 0;  // even := parity(n)
+            while(n){
+               even = 1 - even;
+               n = n & (n - 1);
+            }
+            symbol[k] = even;
+            k++;
+         }
+      }
+   }
+
+   // interleave symbols
+   const unsigned char npr3[162] = {
+      1,1,0,0,0,0,0,0,1,0,0,0,1,1,1,0,0,0,1,0,0,1,0,1,1,1,1,0,0,0,0,0,
+      0,0,1,0,0,1,0,1,0,0,0,0,0,0,1,0,1,1,0,0,1,1,0,1,0,0,0,1,1,0,1,0,
+      0,0,0,1,1,0,1,0,1,0,1,0,1,0,0,1,0,0,1,0,1,1,0,0,0,1,1,0,1,0,1,0,
+      0,0,1,0,0,0,0,0,1,0,0,1,0,0,1,1,1,0,1,1,0,0,1,1,0,1,0,0,0,1,1,1,
+      0,0,0,0,0,1,0,1,0,0,1,1,0,0,0,0,0,0,0,1,1,0,1,0,1,1,0,0,0,1,1,0,
+      0,0 };
+   for(i=0;i!=162;i++){
+      // j0 := bit reversed_values_smaller_than_161[i]
+      unsigned char j0;
+      p=-1;
+      for(k=0;p!=i;k++){
+         for(j=0;j!=8;j++)   // j0:=bit_reverse(k)
+           j0 = ((k>>j)&1)|(j0<<1);
+         if(j0<162)
+           p++;
+      }
+      symbols[j0]=npr3[j0]|symbol[i]<<1; //interleave and add sync vector
+   }
 }
 
-void
-Generate_parity (unsigned char c[], unsigned char symbols[])
-{
-  unsigned long int Reg0 = 0,	// 32 bits shift register
-    Reg1 = 0, result0, result1;
-  int count1,			// to count the number
-    count2,			// of bits at one
-    bit_result = 0, i, j, k, l;
-
-  l = 0;
-  for (j = 0; j < 11; j++)	// each byte
-    {
-      for (i = 7; i >= 0; i--)
-	{
-	  Reg0 = (Reg0 << 1);
-	  Reg0 = Reg0 | (c[j] >> i);	// each bit
-	  Reg1 = Reg0;
-
-	  result0 = Reg0 & POLYNOM_1;	// first polynom
-	  count1 = 0;
-
-	  for (k = 0; k < 32; k++)	// how many bit at one?
-	    {
-	      bit_result = result0 >> k;
-	      if ((bit_result & 0x01) == 1)
-		count1++;
-	    }
-	  if (count1 % 2 == 1)	// if number of one is odd
-	    symbols[l] = 1;	// parity = 1
-	  l++;
-
-	  result1 = Reg1 & POLYNOM_2;	// second polynom
-	  count2 = 0;
-
-	  for (k = 0; k < 32; k++)	// how many bit at one?
-	    {
-	      bit_result = result1 >> k;
-	      if ((bit_result & 0x01) == 1)
-		count2++;
-	    }
-	  if (count2 % 2 == 1)	// if number of one is odd
-	    symbols[l] = 1;	// parity = 1
-	  l++;
-	}			// end of each bit (32) loop
-    }				// end of each byte (11) loop
-}
-
-void
-Interleave (unsigned char symbols[], unsigned char symbols_interleaved[])
-{
-  int i, j, k, l, P;
-
-  P = 0;
-  while (P < 162)
-    {
-      for (k = 0; k <= 255; k++)	// bits reverse, ex: 0010 1110 --> 0111 0100
-	{
-	  i = k;
-	  j = 0;
-	  for (l = 7; l >= 0; l--)	// hard work is done here...
-	    {
-	      j = j | (i & 0x01) << l;
-	      i = i >> 1;
-	    }
-	  if (j < 162)
-	    symbols_interleaved[j] = symbols[P++];	// range in interleaved table
-	}
-    }				// end of while, interleaved table is full
-}
-
-void
-Synchronise (unsigned char symbols_interleaved[],
-	     unsigned char symbols_wspr[])
-{
-  unsigned int sync_word [162]={
-    1,1,0,0,0,0,0,0,1,0,0,0,1,1,1,0,0,0,1,0,0,1,0,1,1,1,1,0,0,0,0,0,0,0,1,0,0,1,0,1,0,0,
-    0,0,0,0,1,0,1,1,0,0,1,1,0,1,0,0,0,1,1,0,1,0,0,0,0,1,1,0,1,0,1,0,1,0,1,0,0,1,0,0,1,0,
-    1,1,0,0,0,1,1,0,1,0,1,0,0,0,1,0,0,0,0,0,1,0,0,1,0,0,1,1,1,0,1,1,0,0,1,1,0,1,0,0,0,1,
-    1,1,0,0,0,0,0,1,0,1,0,0,1,1,0,0,0,0,0,0,0,1,1,0,1,0,1,1,0,0,0,1,1,0,0,0
-  };
-
-  int i;
-
-  for (i = 0; i < 162; i++)
-    symbols_wspr[i] = sync_word[i] + 2 * symbols_interleaved[i];
-}
-
-void
-code_wspr (char* wspr_message, unsigned char* wspr_symbols)
-{
-  unsigned char symbols_parity[162] = "",	// contains 2*81 parity bits
-    symbols_interleaved[162] = "",		// contains parity bits after interleaving
-    c_packed[11];		// for bit packing
-
-  unsigned long N,		// for callsign
-    M;				// for locator and power
-
-
-  Code_msg (wspr_message, &N, &M);
-  Pack_msg (N, M, c_packed);
-  Generate_parity (c_packed, symbols_parity);
-  Interleave (symbols_parity, symbols_interleaved);
-  Synchronise (symbols_interleaved, wspr_symbols);
-
-}
-
-void wait_even_minute()
+void wait_every(int minute)
 {
   time_t t;
   struct tm* ptm;
   for(;;){
     time(&t); 
     ptm = gmtime(&t);
-    if((ptm->tm_min % 2) == 0 && ptm->tm_sec == 0) break;
+    if((ptm->tm_min % minute) == 0 && ptm->tm_sec == 0) break;
     usleep(1000);
   }
   usleep(1000000); // wait another second
@@ -734,50 +622,56 @@ void wait_even_minute()
 
 int main(int argc, char *argv[])
 {
-  char wspr_message[20];          // user beacon message to encode
-  unsigned char wspr_symbols[162] = {};
-  unsigned long tuning_words[162];
+  unsigned char symbols[162];
   int i;
   double centre_freq;
+  int wspr15;
+  double wspr_symtime;
   int nbands = argc - 4;
   int band = 0;
+  time_t t;
 
   if(argc < 5){
-    printf("Usage: wspr <callsign> <locator> <power in dBm> [<frequency in Hz or 0 for interval> ...]\n");
-    printf("\te.g.: sudo ./wspr PE1NNZ JO21 10 7040074 0 0 10140174 0 0\n");
-    printf("\tchoose freq in range +/-100 Hz around one of center frequencies: 137500, 475700, 1838100, 3594100, 5288700, 7040100, 10140200, 14097100, 18106100, 21096100, 24926100, 28126100, 50294500, 70092500, 144490500 Hz\n");
+    printf("Usage: wspr <[prefix/]callsign[/A-Z,/0-9,/00-99]> <locator> <power in dBm> [<frequency in Hz or 0 for interval> ...]\n");
+    printf("\te.g.: sudo ./wspr K1JT/P JO21 10 7040074 0 0 10140174 0 0\n");
+    printf("\tchoose freq in range +/-100 Hz around one of center frequencies: 137500, 475700, 1838100, 3594100, 5288700, 7040100, 10140200, 14097100, 18106100, 21096100, 24926100, 28126100, 50294500, 70092500, 144490500 Hz (WSPR-2), or in range +/-12 Hz around 137612, 475812, 1838212 Hz (WSPR-15).\n");
     return 1;
   }
   // argv[1]=callsign, argv[2]=locator, argv[3]=power(dBm)
-  sprintf(wspr_message, "%s %s %s", argv[1], argv[2], argv[3]);
-  printf("Sending |%s|\n", wspr_message);
-
-  code_wspr(wspr_message, wspr_symbols);
+  wspr(argv[1], argv[2], argv[3], symbols);
   printf("Symbols: ");
-  for (i = 0; i < 162; i++)
-    printf("%d,", wspr_symbols[i]);
+  for (i = 0; i < sizeof(symbols)/sizeof(*symbols); i++)
+    printf("%d,", symbols[i]);
   printf("\n");
   setup_io();
   setup_gpios();
   txon();
   setupDMA();
-  printf("Transmission starts on even minute...\n");
+  printf("Ready for transmit...\n");
 
   for(;;)
   {
     txoff();
     centre_freq = atof(argv[band + 4]);
+    wspr15 = (centre_freq > 137600 && centre_freq < 137625) || \
+             (centre_freq > 475800 && centre_freq < 475825) || \
+             (centre_freq > 1838200 && centre_freq < 1838225);
+    wspr_symtime = (wspr15) ? 8.0 * WSPR_SYMTIME : WSPR_SYMTIME;
     band++;
     if(band >= nbands)
       band = 0;
-    if(centre_freq) setupDMATab(centre_freq, WSPR_OFFSET, WSPR_SYMTIME, 4);
-    wait_even_minute();
-    printf("%f\n", centre_freq);
+    if(centre_freq) setupDMATab(centre_freq, 1.0/wspr_symtime, wspr_symtime, 4);
+    wait_every((wspr15) ? 15 : 2);
+    time(&t);
+    char buf[256];
+    strcpy(buf,ctime(&t));
+    buf[strlen(buf)-1]='\0';
+    printf("%s - %s@%f\n", buf, (wspr15)?"wspr-15":"wspr-2", centre_freq);
     if(centre_freq){
       txon();
       for (i = 0; i < 162; i++) {
-        txSym(wspr_symbols[i], WSPR_SYMTIME);
-        //txSym(atoi(argv[5]), WSPR_SYMTIME);
+        txSym(symbols[i], wspr_symtime);
+        //txSym(atoi(argv[5]), wspr_symtime);
       } 
     }
   }
