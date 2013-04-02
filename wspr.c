@@ -521,7 +521,6 @@ void strupr(char *str)
 void wspr(char* call, char* l, char* dbm, unsigned char* symbols)
 {
    // pack prefix in nadd, call in n1, grid, dbm in n2 
-   static int count = 0;
    char* c, buf[16];
    strncpy(buf, call, 16);
    c=buf;
@@ -554,7 +553,7 @@ void wspr(char* call, char* l, char* dbm, unsigned char* symbols)
    n1=27*n1+(n<2?26:c[i+2]-'A');
    n1=27*n1+(n<3?26:c[i+3]-'A');
   
-   if(count++ % 2) nadd=0;
+   //if(rand() % 2) nadd=0;
    if(!nadd){ 
      strupr(l); //grid square Maidenhead locator (uppercase)
      ng=180*(179-10*(l[0]-'A')-(l[2]-'0'))+10*(l[1]-'A')+(l[3]-'0');
