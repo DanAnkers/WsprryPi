@@ -307,7 +307,6 @@ void setfreq(long freq)
 void txSym(int sym, double tsym)
 {
     int bufPtr=0;
-    short data;
     int clocksPerIter = (int)((F_PWM_CLK/((double)N_ITER)) * tsym);
     //printf("tsym=%f iter=%u clocksPerIter=%u tsymerr=%f\n", tsym, N_ITER, clocksPerIter, tsym - ((float)clocksPerIter*(float)N_ITER)/F_PWM_CLK );
     int i = sym*3 + 511;
@@ -517,10 +516,13 @@ void strupr(char *str)
     }
 }
 
-void wspr(char* c, char* l, char* dbm, unsigned char* symbols)
+void wspr(char* call, char* l, char* dbm, unsigned char* symbols)
 {
    // pack prefix in nadd, call in n1, grid, dbm in n2 
    static int count = 0;
+   char* c, buf[16];
+   strncpy(buf, call, 16);
+   c=buf;
    strupr(c);
    unsigned long ng,nadd=0;
 
@@ -528,6 +530,7 @@ void wspr(char* c, char* l, char* dbm, unsigned char* symbols)
      nadd=2;
      int i=strchr(c, '/')-c; //stroke position 
      int n=strlen(c)-i-1; //suffix len, prefix-call len
+     c[i]='\0';
      if(n==1) ng=60000-32768+(c[i+1]>='0'&&c[i+1]<='9'?c[i+1]-'0':c[i+1]==' '?38:c[i+1]-'A'+10); // suffix /A to /Z, /0 to /9
      if(n==2) ng=60000+26+10*(c[i+1]-'0')+(c[i+2]-'0'); // suffix /10 to /99
      if(n>2){ // prefix EA8/, right align
@@ -539,7 +542,7 @@ void wspr(char* c, char* l, char* dbm, unsigned char* symbols)
      }
    }
 
-   int i=(isdigit(c[2])?2:isdigit(c[1])?1:0); //last prefix digit
+   int i=(isdigit(c[2])?2:isdigit(c[1])?1:0); //last prefix digit of de-suffixed/de-prefixed callsign
    int n=strlen(c)-i-1; //2nd part of call len
    unsigned long n1;
    n1=(i<2?36:c[i-2]>='0'&&c[i-2]<='9'?c[i-2]-'0':c[i-2]-'A'+10);
