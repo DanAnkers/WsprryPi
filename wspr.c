@@ -115,7 +115,7 @@ Usage:
 
 Compile:
   sudo apt-get install gcc
-  gcc -lm -std=c99 wspr.c -owspr
+  gcc -lm wspr.c -owspr
 
 Reference documentation:
   http://www.raspberrypi.org/wp-content/uploads/2012/02/BCM2835-ARM-Peripherals.pdf
@@ -315,7 +315,8 @@ void txSym(int sym, double tsym)
     double frac = (dval - (double)k)/2 + 0.5;
     unsigned int fracval = (frac*clocksPerIter);
     //printf("i=%d *i=%u %u fracval=%u dval=%f sym=%d\n", i, ((int*)(constPage.v))[i-1], ((int*)(constPage.v))[i+1], fracval, dval, sym); 
-    for(int j=0; j!=N_ITER; j++){
+    int j;
+    for(j=0; j!=N_ITER; j++){
         bufPtr++;
         while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (int)(instrs[bufPtr].p)) usleep(100);
         ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (int)constPage.p + (i-1)*4;
@@ -347,7 +348,8 @@ void handSig() {
 void setupDMATab( float centerFreq, double symOffset, double tsym, int nsym ){
    // make data page contents - it's essientially 1024 different commands for the
    // DMA controller to send to the clock module at the correct time.
-  for (int i=1; i<1023; i+=3){
+  int i;
+  for(i=1; i<1023; i+=3){
      double freq = centerFreq + ((double)(-511 + i))*symOffset/3.0;
      double divisor = F_PLLD_CLK/freq;
      unsigned long integer_part = (unsigned long) divisor;
@@ -391,8 +393,8 @@ void setupDMA(){
     
      // make copy instructions
      struct CB* instr0= (struct CB*)instrPage.v;
-    
-     for (int i=0; i<4096/sizeof(struct CB); i++) {
+     int i; 
+     for (i=0; i<4096/sizeof(struct CB); i++) {
        instrs[instrCnt].v = (void*)((int)instrPage.v + sizeof(struct CB)*i);
        instrs[instrCnt].p = (void*)((int)instrPage.p + sizeof(struct CB)*i);
        instr0->SOURCE_AD = (unsigned int)constPage.p+2048;
@@ -563,7 +565,7 @@ void wspr(char* call, char* l, char* dbm, unsigned char* symbols)
    unsigned long n2=(ng<<7)|(p+64+nadd);
 
    // pack n1,n2,zero-tail into 50 bits
-   char packed[11] = {n1>>20, n1>>12, n1>>4, (n1&0x0f)<<4|(n2>>18)&0x0f, 
+   char packed[11] = {n1>>20, n1>>12, n1>>4, ((n1&0x0f)<<4)|((n2>>18)&0x0f), 
 n2>>10, n2>>2, (n2&0x03)<<6, 0, 0, 0, 0};
 
    // convolutional encoding K=32, r=1/2, Layland-Lushbaugh polynomials
@@ -632,7 +634,6 @@ int main(int argc, char *argv[])
   double wspr_symtime;
   int nbands = argc - 4;
   int band = 0;
-  time_t t;
 
   if(argc < 5){
     printf("Usage: wspr <[prefix/]callsign[/A-Z,/0-9,/00-99]> <locator> <power in dBm> [<frequency in Hz or 0 for interval> ...]\n");
@@ -665,6 +666,7 @@ int main(int argc, char *argv[])
       band = 0;
     if(centre_freq) setupDMATab(centre_freq, 1.0/wspr_symtime, wspr_symtime, 4);
     wait_every((wspr15) ? 15 : 2);
+    time_t t;
     time(&t);
     char buf[256];
     strcpy(buf,ctime(&t));
