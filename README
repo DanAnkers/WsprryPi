@@ -103,10 +103,8 @@ Compile:
   gcc -lm -std=c99 wspr.c -owspr
 
 Issues:
-  Two users are reporting that the program never stops transmitting, even
-  when intervals for disabled tx are programmed. It is also reported that 
-  other applications cannot reliably program GPIO pins. Currently the cause 
-  is unknown, but it seems hardware related to RPi Type B/Rev.2 boards.
-  Please let me know if you experience similar issue or found a resolution.
-  Guido, pe1nnz@amsat.org
-
+  Two users were reporting that the program never stops transmitting, even
+  when intervals for disabled tx are programmed. The problem was in both
+  cases fixed by flashing a new image on the SD card with a freshly downloaded 
+  image: 2013-02-09-wheezy-raspbian.zip. No apt-get upgrade or firmware
+  upgrade was performed. After this WsprryPi TX was running successfully. 
