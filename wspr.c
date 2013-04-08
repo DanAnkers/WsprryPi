@@ -82,7 +82,8 @@ To use:
   antenna directly to GPIO4 may damage your RPi due to transient voltages such as
   lightning or static buildup as well as RF from other transmitters operating into
   nearby antennas. Therefore it is RECOMMENDED to add some form of isolation, e.g.
-  by using a simple buffer or driver/PA stage.
+  by using a RF transformer, a simple buffer/driver/PA stage, two schottky small 
+  signal diodes back to back.
 
 Installation / update:
   Open a terminal and execute the following commands:
