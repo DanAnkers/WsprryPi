@@ -71,14 +71,18 @@ To use:
   the frequency error that can be applied for correction while tuning on a WSPR
   frequency.
 
-  DO NOT expose GPIO4 to voltages or currents that are above the specified 
-  Absolute Maximum limits. GPIO4 outputs a digital clock in 3V3 logic, with a 
-  maximum current of 16mA. As there is no current protection available and 
-  a DC component of 1.6V, DO NOT short-circuit or place a resistive (dummy) load 
-  straight on the GPIO4 pin, as it may draw too much current. Instead, use a 
-  decoupling capacitor to remove DC component when connecting the output 
-  dummy loads, transformers, antennas, etc. DO NOT expose the GPIO4 pin to
-  static voltages or voltages exceeding the 0 to 3.3V logic range.
+  DO NOT expose GPIO4 to voltages or currents that are above the specified
+  Absolute Maximum limits. GPIO4 outputs a digital clock in 3V3 logic, with a
+  maximum current of 16mA. As there is no current protection available and
+  a DC component of 1.6V, DO NOT short-circuit or place a resistive (dummy) load
+  straight on the GPIO4 pin, as it may draw too much current. Instead, use a
+  decoupling capacitor to remove DC component when connecting the output
+  dummy loads, transformers, antennas, etc. DO NOT expose GPIO4 to electro-
+  static voltages or voltages exceeding the 0 to 3.3V logic range; connecting an
+  antenna directly to GPIO4 may damage your RPi due to transient voltages such as
+  lightning or static buildup as well as RF from other transmitters operating into
+  nearby antennas. Therefore it is RECOMMENDED to add some form of isolation, e.g.
+  by using a simple buffer or driver/PA stage.
 
 Installation / update:
   Open a terminal and execute the following commands:
@@ -122,6 +126,7 @@ Reference documentation:
   http://www.scribd.com/doc/127599939/BCM2835-Audio-clocks
   http://www.scribd.com/doc/101830961/GPIO-Pads-Control2
   https://github.com/mgottschlag/vctools/blob/master/vcdb/cm.yaml
+  https://www.kernel.org/doc/Documentation/vm/pagemap.txt
 
 */
 
