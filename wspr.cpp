@@ -1,136 +1,20 @@
+// WSPR transmitter for the Raspberry Pi. See accompanying README and BUILD
+// files for descriptions on how to use this code.
+
 /*
-
- Raspberry Pi bareback LF/MF/HF/VHF WSPR transmitter  <pe1nnz@amsat.org>
-
- Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO
- port to Antanna (and LPF), operates on LF, MF, HF and VHF bands from
- 0 to 250 MHz.
-
 License:
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 2 of the License, or
-    (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 2 of the License, or
+  (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-Credits:
-  Credits goes to Oliver Mattos and Oskar Weigl who implemented PiFM [1]
-  based on the idea of exploiting RPi DPLL as FM transmitter. Dan MD1CLV
-  combined this effort with WSPR encoding algorithm from F8CHK, resulting
-  in WsprryPi a WSPR beacon for LF and MF bands. Guido PE1NNZ extended
-  this effort with DMA based PWM modulation of fractional divider that was
-  part of PiFM, allowing to operate the WSPR beacon also on HF and VHF bands.
-  In addition time-synchronisation and double amount of power output was
-  implemented.
-
-  [1] PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
-
-To use:
-  In order to transmit legally, a HAM Radio License is REQUIRED for running
-  this experiment. The output is a square wave so a low pass filter is REQUIRED.
-  Connect a low-pass filter (via decoupling C) to GPIO4 (GPCLK0) and Ground pin
-  of your Raspberry Pi, connect an antenna to the LPF. The GPIO4 and GND pins
-  are found on header P1 pin 7 and 9 respectively, the pin closest to P1 label
-  is pin 1 and its 3rd and 4th neighbour is pin 7 and 9 respectively, see this
-  link for pin layout: http://elinux.org/RPi_Low-level_peripherals Examples of
-  low-pass filters can be found here: http://www.gqrp.com/harmonic_filters.pdf
-  The expected power output is 10mW (+10dBm) in a 50 Ohm load. This looks
-  neglible, but when connected to a simple dipole antenna this may result in
-  reception reports ranging up to several thousands of kilometers.
-  Example of low-pass filters here: http://www.gqrp.com/harmonic_filters.pdf
-  As the Raspberry Pi does not attenuate ripple and noise components from the
-  5V USB power supply, it is RECOMMENDED to use a regulated supply that has
-  sufficient ripple supression. Supply ripple might be seen as mixing products
-  products centered around the transmit carrier typically at 100/120Hz.
-
-  This software is using system time to determine the start of a WSPR
-  transmissions, so keep the system time synchronised within 1sec precision,
-  i.e. use NTP network time synchronisation or set time manually with date
-  command. A WSPR broadcast starts on even minute and takes 2 minutes for WSPR-2
-  or starts at :00,:15,:30,:45 and takes 15 minutes for WSPR-15. It contains
-  a callsign, 4-digit Maidenhead square locator and transmission power.
-  Reception reports can be viewed on Weak Signal Propagation Reporter Network
-  at: http://wsprnet.org/drupal/wsprnet/spots
-
-  Frequency calibration is REQUIRED to ensure that the WSPR-2 transmission occurs
-  within the 200 Hz narrow band. The reference crystal on your RPi might have
-  an frequency error (which in addition is temp. dependent -1.3Hz/degC @10MHz).
-  To calibrate, the frequency might be manually corrected on the command line
-  or by changing the F_XTAL value in the code. A practical way to calibrate
-  is to tune the transmitter on the same frequency of a medium wave AM broadcast
-  station; keep tuning until zero beat (the constant audio tone disappears when
-  the transmitter is exactly on the same frequency as the broadcast station),
-  and determine the frequency difference with the broadcast station. This is
-  the frequency error that can be applied for correction while tuning on a WSPR
-  frequency.
-
-  DO NOT expose GPIO4 to voltages or currents that are above the specified
-  Absolute Maximum limits. GPIO4 outputs a digital clock in 3V3 logic, with a
-  maximum current of 16mA. As there is no current protection available and
-  a DC component of 1.6V, DO NOT short-circuit or place a resistive (dummy) load
-  straight on the GPIO4 pin, as it may draw too much current. Instead, use a
-  decoupling capacitor to remove DC component when connecting the output
-  dummy loads, transformers, antennas, etc. DO NOT expose GPIO4 to electro-
-  static voltages or voltages exceeding the 0 to 3.3V logic range; connecting an
-  antenna directly to GPIO4 may damage your RPi due to transient voltages such as
-  lightning or static buildup as well as RF from other transmitters operating into
-  nearby antennas. Therefore it is RECOMMENDED to add some form of isolation, e.g.
-  by using a RF transformer, a simple buffer/driver/PA stage, two schottky small
-  signal diodes back to back.
-
-Installation / update:
-  Open a terminal and execute the following commands:
-   sudo apt-get install git
-   rm -rf WsprryPi
-   git clone https://github.com/threeme3/WsprryPi.git
-   cd WsprryPi
-
-Usage:
-  sudo ./wspr <[prefix]/callsign[/suffix]> <locator> <power in dBm> [<frequency in Hz> ...]
-        e.g.: sudo ./wspr PA/K1JT JO21 10 7040074 0 0 10140174 0 0
-        where 0 frequency represents a interval for which TX is disabled,
-        wspr-2 or wspr-15 mode selection based on specified frequency.
-
-  WSPR is used on the following frequencies (local restriction may apply):
-     LF   137400 - 137600
-          137600 - 137625 (WSPR-15)
-     MF   475600 - 475800
-          475800 - 475825 (WSPR-15)
-    160m  1838000 - 1838200
-          1838200 - 1838225 (WSPR-15)
-     80m  3594000 - 3594200
-     60m  5288600 - 5288800
-     40m  7040000 - 7040200
-     30m  10140100 - 10140300
-     20m  14097000 - 14097200
-     17m  18106000 - 18106200
-     15m  21096000 - 21096200
-     12m  24926000 - 24926200
-     10m  28126000 - 28126200
-      6m  50294400 - 50294600
-      4m  70092400 - 70092600
-      2m  144490400 -144490600
-
-Compile:
-  sudo apt-get install gcc
-  gcc -lm wspr.c -owspr
-
-Reference documentation:
-  http://www.raspberrypi.org/wp-content/uploads/2012/02/BCM2835-ARM-Peripherals.pdf
-  http://www.scribd.com/doc/127599939/BCM2835-Audio-clocks
-  http://www.scribd.com/doc/101830961/GPIO-Pads-Control2
-  https://github.com/mgottschlag/vctools/blob/master/vcdb/cm.yaml
-  https://www.kernel.org/doc/Documentation/vm/pagemap.txt
-
- 2013-07-10 James Peroulas <james@evrytania.com>
-   Added self-calibration of frequency offset. Compiled using c++ compiler.
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 */
 
@@ -149,46 +33,43 @@ Reference documentation:
 #include <signal.h>
 #include <malloc.h>
 #include <time.h>
+#include <sys/time.h>
 #include <getopt.h>
 #include <vector>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
 
-#define ABORT(a) exit(a)
-#define WSPR_RAND_OFFSET 80
-#define WSPR15_RAND_OFFSET 10
-#define MARK std::cout << "Currently in file: " << __FILE__ << " line: " << __LINE__ << std::endl
-
 using namespace std;
 
-//#define F_XTAL       (19229581.050215044276577479844352)             // calibrated 19.2MHz XTAL frequency
-#define F_XTAL       (19200000.0)             // calibrated 19.2MHz XTAL frequency
-#define F_PLLD_CLK   (26.0 * F_XTAL)                                 // 500MHz PLLD reference clock
+#define ABORT(a) exit(a)
+// Used for debugging
+#define MARK std::cout << "Currently in file: " << __FILE__ << " line: " << __LINE__ << std::endl
 
-//#define N_ITER  1400  // number of PWM operations per symbol; larger values gives less spurs at the cost of frequency resolution; e.g. use 22500 for HF usage up to 30MHz, 12000 up to 50MHz, 1600 for VHF usage up to 144 Mhz, F_PWM_CLK needs to be adjusted when changing N_ITER
-//#define F_PWM_CLK    (31500000.0)   // 31.5MHz PWM clock   use with N_ITER=22500
-//#define F_PWM_CLK    (33970588.235294117647058823529413)   // 31.5MHz calibrated PWM clock   use with N_ITER=1400
+// Empirical PLLD clock frequency which minimizes the discrepancy between
+// the ntp measured ppm error and the ppm error measured with an external
+// frequency counter.
+#define F_PLLD_CLK   (500005000.0)
+// Empirical value for F_PWM_CLK that produces WSPR symbols that are 'close' to
+// 0.682s long. For some reason, despite the use of DMA, the load on the PI
+// affects the TX length of the symbols. However, the varying symbol length is
+// compensated for in the main loop.
+#define F_PWM_CLK_INIT (31156186.6125761)
 
-#define WSPR_SYMTIME (8192.0/12000.0)  // symbol time
-
-#define POLYNOM_1 0xf2d05351    // polynoms for
-#define POLYNOM_2 0xe4613c47    // parity generator
-
-/* RF code: */
+// WSRP nominal symbol time
+#define WSPR_SYMTIME (8192.0/12000.0)
+// How much random frequency offset should be added to WSPR transmissions
+// if the --offset option has been turned on.
+#define WSPR_RAND_OFFSET 80
+#define WSPR15_RAND_OFFSET 8
 
 #define BCM2708_PERI_BASE        0x20000000
 #define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
 #define PAGE_SIZE (4*1024)
 #define BLOCK_SIZE (4*1024)
 
-//int  mem_fd;
-char *gpio_mem, *gpio_map;
-//char *spi0_mem, *spi0_map;
-
-
-// I/O access
-volatile unsigned *gpio = NULL;
+// This must be declared global so that it can be called by the atexit
+// function.
 volatile unsigned *allof7e = NULL;
 
 // GPIO setup macros. Always use INP_GPIO(x) before using OUT_GPIO(x) or SET_GPIO_ALT(x,y)
@@ -211,6 +92,8 @@ volatile unsigned *allof7e = NULL;
 #define DMABASE (0x7E007000)
 #define PWMBASE  (0x7e20C000) /* PWM controller */
 
+typedef enum {WSPR,TONE} mode_type;
+
 struct GPCTL {
     char SRC         : 4;
     char ENAB        : 1;
@@ -222,31 +105,6 @@ struct GPCTL {
     unsigned int     : 13;
     char PASSWD      : 8;
 };
-
-void getRealMemPage(void** vAddr, void** pAddr) {
-    void* a = (void*)valloc(4096);
-
-    ((int*)a)[0] = 1;  // use page to force allocation.
-
-    mlock(a, 4096);  // lock into ram.
-
-    *vAddr = a;  // yay - we know the virtual address
-
-    unsigned long long frameinfo;
-
-    int fp = open("/proc/self/pagemap", 'r');
-    lseek(fp, ((long int)a)/4096*8, SEEK_SET);
-    read(fp, &frameinfo, sizeof(frameinfo));
-
-    *pAddr = (void*)((long int)(frameinfo*4096));
-}
-
-void freeRealMemPage(void* vAddr) {
-
-    munlock(vAddr, 4096);  // unlock ram.
-
-    free(vAddr);
-}
 
 struct CB {
     volatile unsigned int TI;
@@ -276,26 +134,38 @@ struct PageInfo {
     void* v;   // virtual address
 };
 
-struct PageInfo constPage;
-struct PageInfo instrPage;
-struct PageInfo instrs[1024];
+//struct PageInfo constPage;
+//struct PageInfo instrPage;
+//struct PageInfo instrs[1024];
 
-//double fracs[1024];
+// Get the physical address of a page of virtual memory
+void getRealMemPage(void** vAddr, void** pAddr) {
+    void* a = (void*)valloc(4096);
 
-void txon(const int & mem_fd)
+    ((int*)a)[0] = 1;  // use page to force allocation.
+
+    mlock(a, 4096);  // lock into ram.
+
+    *vAddr = a;  // yay - we know the virtual address
+
+    unsigned long long frameinfo;
+
+    int fp = open("/proc/self/pagemap", 'r');
+    lseek(fp, ((long int)a)/4096*8, SEEK_SET);
+    read(fp, &frameinfo, sizeof(frameinfo));
+
+    *pAddr = (void*)((long int)(frameinfo*4096));
+}
+
+void freeRealMemPage(void* vAddr) {
+
+    munlock(vAddr, 4096);  // unlock ram.
+
+    free(vAddr);
+}
+
+void txon()
 {
-    if(allof7e == NULL){
-      allof7e = (unsigned *)mmap(
-                  NULL,
-                  0x01000000,  //len
-                  PROT_READ|PROT_WRITE,
-                  MAP_SHARED,
-                  mem_fd,
-                  0x20000000  //base
-              );
-      if ((long int)allof7e==-1) exit(-1);
-    }
-
     SETBIT(GPFSEL0 , 14);
     CLRBIT(GPFSEL0 , 13);
     CLRBIT(GPFSEL0 , 12);
@@ -320,45 +190,77 @@ void txoff()
     ACCESS(CM_GP0CTL) = *((int*)&setupword);
 }
 
-/*
-void setfreq(long freq)
-{
-    ACCESS(CM_GP0DIV) = (0x5a << 24) + freq;
-}
-*/
-
 // Transmit symbol sym for tsym seconds.
-void txSym(int sym, double tsym, const double & f_pwm_clk, const int & n_iter, const double fracs[])
-{
-    int bufPtr=0;
-    // Each symbol is broken up into n_iter 'iterations'...
-    int clocksPerIter = (int)((f_pwm_clk/((double)n_iter)) * tsym);
-    //printf("tsym=%f iter=%u clocksPerIter=%u tsymerr=%f\n", tsym, n_iter, clocksPerIter, tsym - ((float)clocksPerIter*(float)n_iter)/f_pwm_clk );
-    // i seems to be an index into the DMA table
-    int i = sym*3 + 511;
-    double dval = -1.0 * fracs[i] - 0.5; // ratio between -0.5 and 0.5 of frequency position that is in between two fractional clock divider bins (frequency goes up for dval from -0.5 to 0.5)
-    int k = (int)(round(dval));  // integer component
-    double frac = (dval - (double)k)/2 + 0.5;
-    unsigned int fracval = (unsigned int)(frac*clocksPerIter);
-    //printf("i=%d *i=%u %u fracval=%u dval=%f sym=%d\n", i, ((int*)(constPage.v))[i-1], ((int*)(constPage.v))[i+1], fracval, dval, sym);
-    int j;
-    for(j=0; j!=n_iter; j++){
-        bufPtr++;
-        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
-        ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.p + (i-1)*4;
+//
+// TODO:
+// Upon entering this function at the beginning of a WSPR transmission, we
+// do not know which DMA table entry is being processed by the DMA engine.
+#define PWM_CLOCKS_PER_ITER_NOMINAL 1000
+void txSym(
+  const int & sym_num,
+  const double & center_freq,
+  const double & tone_spacing,
+  const double & tsym,
+  const vector <double> & dma_table_freq,
+  const double & f_pwm_clk,
+  struct PageInfo instrs[],
+  struct PageInfo & constPage,
+  int & bufPtr
+) {
+  const int f0_idx=sym_num*2;
+  const int f1_idx=f0_idx+1;
+  const double f0_freq=dma_table_freq[f0_idx];
+  const double f1_freq=dma_table_freq[f1_idx];
+  const double tone_freq=center_freq-1.5*tone_spacing+sym_num*tone_spacing;
+  // Double check...
+  assert((tone_freq>=f0_freq)&&(tone_freq<=f1_freq));
+  const double f0_ratio=1.0-(tone_freq-f0_freq)/(f1_freq-f0_freq);
+  assert ((f0_ratio>=0)&&(f0_ratio<=1));
+  const long int n_pwmclk_per_sym=round(f_pwm_clk*tsym);
 
-        bufPtr++;
-        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
-        ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = clocksPerIter-fracval;
-
-        bufPtr++;
-        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
-        ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.p + (i+1)*4;
-
-        bufPtr=(bufPtr+1) % (1024);
-        while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
-        ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = fracval;
+  long int n_pwmclk_transmitted=0;
+  long int n_f0_transmitted=0;
+  while (n_pwmclk_transmitted<n_pwmclk_per_sym) {
+    // Number of PWM clocks for this iteration
+    long int n_pwmclk=PWM_CLOCKS_PER_ITER_NOMINAL;
+    // Iterations may produce spurs around the main peak based on the iteration
+    // frequency. Randomize the iteration period so as to spread this peak
+    // around.
+    n_pwmclk+=round((rand()/((double)RAND_MAX+1.0)-.5)*n_pwmclk)*1;
+    if (n_pwmclk_transmitted+n_pwmclk>n_pwmclk_per_sym) {
+      n_pwmclk=n_pwmclk_per_sym-n_pwmclk_transmitted;
     }
+
+    // Calculate number of clocks to transmit f0 during this iteration so
+    // that the long term average is as close to f0_ratio as possible.
+    const long int n_f0=round(f0_ratio*(n_pwmclk_transmitted+n_pwmclk))-n_f0_transmitted;
+    const long int n_f1=n_pwmclk-n_f0;
+
+    // Configure the transmission for this iteration
+    // Set GPIO pin to transmit f0
+    bufPtr++;
+    while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.p + f0_idx*4;
+
+    // Wait for n_f0 PWM clocks
+    bufPtr++;
+    while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = n_f0;
+
+    // Set GPIO pin to transmit f1
+    bufPtr++;
+    while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.p + f1_idx*4;
+
+    // Wait for n_f1 PWM clocks
+    bufPtr=(bufPtr+1) % (1024);
+    while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = n_f1;
+
+    // Update counters
+    n_pwmclk_transmitted+=n_pwmclk;
+    n_f0_transmitted+=n_f0;
+  }
 }
 
 void unSetupDMA(){
@@ -372,56 +274,94 @@ void handSig(const int h) {
   exit(0);
 }
 
-void setupDMATab( float centerFreq, double symOffset, double tsym, int nsym, const double & ppm, const double & f_pwm_clk, const int & n_iter, double fracs[] ){
-   // make data page contents - it's essientially 1024 different commands for the
-   // DMA controller to send to the clock module at the correct time.
-  int i;
-  for(i=1; i<1023; i+=3){
-     double freq = centerFreq + ((double)(-511 + i))*symOffset/3.0;
-     double divisor = F_PLLD_CLK*(1+ppm)/freq;
-     unsigned long integer_part = (unsigned long) divisor;
-     unsigned long fractional_part = (unsigned long)((divisor - integer_part) * (1 << 12));
-     unsigned long tuning_word = (0x5a << 24) + integer_part * (1 << 12) + fractional_part;
-     if(fractional_part == 0 || fractional_part == 1023){
-       if((-511 + i) >= 0 && (-511 + i) <= (nsym * 3))
-         printf("warning: symbol %u unusable because fractional divider is out of range, try near frequency.\n", i/3);
-     }
-     ((int*)(constPage.v))[i-1] = tuning_word - 1;
-     ((int*)(constPage.v))[i] = tuning_word;
-     ((int*)(constPage.v))[i+1] = tuning_word + 1;
-     double actual_freq = F_PLLD_CLK*(1+ppm)/((double)integer_part + (double)fractional_part/(double)(1<<12));
-     double freq_corr = freq - actual_freq;
-     double delta = F_PLLD_CLK*(1+ppm)/((double)integer_part + (double)fractional_part/(double)(1<<12)) - F_PLLD_CLK*(1+ppm)/((double)integer_part + ((double)fractional_part+1.0)/(double)(1<<12));
-     int clocksPerIter = (int)((f_pwm_clk/((double)n_iter)) * tsym);
-     double resolution = 2.0 * delta / ((double)clocksPerIter);
-     if(resolution > symOffset ){
-       printf("warning: PWM/PLL fractional divider has not enough resolution: %fHz while %fHz is required, try lower frequency or decrease N_ITER in code to achieve more resolution.\n", resolution, symOffset);
-       exit(0);
-     }
-     fracs[i] = freq_corr/delta;
-     //printf("i=%u f=%f fa=%f corr=%f delta=%f percfrac=%f int=%u frac=%u tuning_word=%u resolution=%fmHz\n", i, freq, actual_freq, freq_corr, delta, fracs[i], integer_part, fractional_part, tuning_word, resolution *1000);
-   }
+double bit_trunc(
+  const double & d,
+  const int & lsb
+) {
+  return floor(d/pow(2.0,lsb))*pow(2.0,lsb);
 }
 
-void setupDMA(){
+// Program the tuning words into the DMA table.
+void setupDMATab(
+  const double & center_freq_desired,
+  const double & tone_spacing,
+  const double & plld_actual_freq,
+  vector <double> & dma_table_freq,
+  double & center_freq_actual,
+  struct PageInfo & constPage
+){
+  // Make sure that all the WSPR tones can be produced solely by
+  // varying the fractional part of the frequency divider.
+  center_freq_actual=center_freq_desired;
+  double div_lo=bit_trunc(plld_actual_freq/(center_freq_desired-1.5*tone_spacing),-12)+pow(2.0,-12);
+  double div_hi=bit_trunc(plld_actual_freq/(center_freq_desired+1.5*tone_spacing),-12);
+  if (floor(div_lo)!=floor(div_hi)) {
+    center_freq_actual=plld_actual_freq/floor(div_lo)-1.6*tone_spacing;
+    stringstream temp;
+    temp << setprecision(6) << fixed << "  Warning: center frequency has been changed to " << center_freq_actual/1e6 << " MHz" << endl;
+    cout << temp.str();
+    cout << "  because of hardware limitations!" << endl;
+  }
+
+  // Create DMA table of tuning words. WSPR tone i will use entries 2*i and
+  // 2*i+1 to generate the appropriate tone.
+  dma_table_freq.resize(1024);
+  double tone0_freq=center_freq_actual-1.5*tone_spacing;
+  vector <long int> tuning_word(1024);
+  for (int i=0;i<8;i++) {
+    double tone_freq=tone0_freq+(i>>1)*tone_spacing;
+    double div=bit_trunc(plld_actual_freq/tone_freq,-12);
+    if (i%2==0) {
+      div=div+pow(2.0,-12);
+    }
+    tuning_word[i]=((int)(div*pow(2.0,12)));
+  }
+  // Fill the remaining table, just in case...
+  for (int i=8;i<1024;i++) {
+    double div=500+i;
+    tuning_word[i]=((int)(div*pow(2.0,12)));
+  }
+
+  // Program the table
+  for (int i=0;i<1024;i++) {
+    dma_table_freq[i]=plld_actual_freq/(tuning_word[i]/pow(2.0,12));
+    ((int*)(constPage.v))[i] = (0x5a<<24)+tuning_word[i];
+    if ((i%2==0)&&(i<8)) {
+      assert((tuning_word[i]&(~0xfff))==(tuning_word[i+1]&(~0xfff)));
+    }
+  }
+
+}
+
+void setupDMA(
+  struct PageInfo & constPage,
+  struct PageInfo & instrPage,
+  struct PageInfo instrs[]
+){
    atexit(unSetupDMA);
    signal (SIGINT, handSig);
    signal (SIGTERM, handSig);
    signal (SIGHUP, handSig);
    signal (SIGQUIT, handSig);
 
-   // allocate a few pages of ram
+   // Allocate a page of ram for the constants
    getRealMemPage(&constPage.v, &constPage.p);
 
+   // Create 1024 instructions allocating one page at a time.
+   // Even instructions target the GP0 Clock divider
+   // Odd instructions target the PWM FIFO
    int instrCnt = 0;
-
    while (instrCnt<1024) {
+     // Allocate a page of ram for the instructions
      getRealMemPage(&instrPage.v, &instrPage.p);
 
      // make copy instructions
+     // Only create as many instructions as will fit in the recently
+     // allocated page. If not enough space for all instructions, the
+     // next loop will allocate another page.
      struct CB* instr0= (struct CB*)instrPage.v;
      int i;
-     for (i=0; i<4096/sizeof(struct CB); i++) {
+     for (i=0; i<(signed)(4096/sizeof(struct CB)); i++) {
        instrs[instrCnt].v = (void*)((long int)instrPage.v + sizeof(struct CB)*i);
        instrs[instrCnt].p = (void*)((long int)instrPage.p + sizeof(struct CB)*i);
        instr0->SOURCE_AD = (unsigned long int)constPage.p+2048;
@@ -433,6 +373,7 @@ void setupDMA(){
        instr0->RES1 = 0;
        instr0->RES2 = 0;
 
+       // Shouldn't this be (instrCnt%2) ???
        if (i%2) {
          instr0->DEST_AD = CM_GP0DIV;
          instr0->STRIDE = 4;
@@ -444,12 +385,13 @@ void setupDMA(){
        instrCnt++;
      }
    }
+   // Create a circular linked list of instructions
    ((struct CB*)(instrs[1023].v))->NEXTCONBK = (long int)instrs[0].p;
 
    // set up a clock for the PWM
    ACCESS(CLKBASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000026;  // Source=PLLD and disable
    usleep(1000);
-//   ACCESS(CLKBASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002800;
+   //ACCESS(CLKBASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002800;
    ACCESS(CLKBASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002000;  // set PWM div to 2, for 250MHz
    ACCESS(CLKBASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000016;  // Source=PLLD and enable
    usleep(1000);
@@ -459,6 +401,9 @@ void setupDMA(){
    usleep(1000);
    ACCESS(PWMBASE + 0x4 /* status*/) = -1;  // clear errors
    usleep(1000);
+   // Range should default to 32, but it is set at 2048 after reset on my RPi.
+   ACCESS(PWMBASE + 0x10)=32;
+   ACCESS(PWMBASE + 0x20)=32;
    ACCESS(PWMBASE + 0x0 /* CTRL*/) = -1; //(1<<13 /* Use fifo */) | (1<<10 /* repeat */) | (1<<9 /* serializer */) | (1<<8 /* enable ch */) ;
    usleep(1000);
    ACCESS(PWMBASE + 0x8 /* DMAC*/) = (1<<31 /* DMA enable */) | 0x0707;
@@ -476,8 +421,12 @@ void setupDMA(){
 //
 // Set up a memory regions to access GPIO
 //
-void setup_io(int & mem_fd)
-{
+void setup_io(
+  int & mem_fd,
+  char * & gpio_mem,
+  char * & gpio_map,
+  volatile unsigned * & gpio
+) {
     /* open /dev/mem */
     if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
         printf("can't open /dev/mem \n");
@@ -517,8 +466,9 @@ void setup_io(int & mem_fd)
 
 }
 
-void setup_gpios()
-{
+void setup_gpios(
+  volatile unsigned * & gpio
+){
    int g;
    // Switch GPIO 7..11 to output mode
 
@@ -644,7 +594,7 @@ n2>>10, n2>>2, (n2&0x03)<<6, 0, 0, 0, 0};
    }
 }
 
-// Wait for the system clock's minute to reach 'minute'
+// Wait for the system clock's minute to reach one second past 'minute'
 void wait_every(int minute)
 {
   time_t t;
@@ -660,29 +610,54 @@ void wait_every(int minute)
 
 void print_usage() {
   cout << "Usage:" << endl;
-  cout << "wspr [options] <[prefix/]callsign[/A-Z,/0-9,/00-99]> <locator>" << endl;
-  cout << "  <power in dBm> <frequency1> <frequency2> <frequency3> ..." << endl;
+  cout << "  wspr [options] callsign locator tx_pwr_dBm f1 <f2> <f3> ..." << endl;
+  cout << "    OR" << endl;
+  cout << "  wspr [options] --test-tone f" << endl;
   cout << endl;
   cout << "Options:" << endl;
   cout << "  -h --help" << endl;
-  cout << "    Print out this help screen" << endl;
+  cout << "    Print out this help screen." << endl;
   cout << "  -p --ppm ppm" << endl;
-  cout << "    Known PPM error if RPi 19.2MHz crystal" << endl;
+  cout << "    Known PPM correction to 19.2MHz RPi nominal crystal frequency." << endl;
   cout << "  -s --self-calibration" << endl;
-  cout << "    Query ntpd before every transmission to obtain the PPM error of the crystal" << endl;
+  cout << "    Query ntpd before every transmission to obtain the PPM error of the crystal." << endl;
   cout << "  -r --repeat" << endl;
-  cout << "    Transmit on each specified frequency, in order, and then repeat forever" << endl;
+  cout << "    Repeatedly, and in order, transmit on all the specified command line freqs." << endl;
+  cout << "  -x --terminate <n>" << endl;
+  cout << "    Terminate after n transmissions have been completed." << endl;
   cout << "  -o --offset" << endl;
   cout << "    Add a random frequency offset to each transmission:" << endl;
   cout << "      +/- " << WSPR_RAND_OFFSET << " Hz for WSPR" << endl;
   cout << "      +/- " << WSPR15_RAND_OFFSET << " Hz for WSPR-15" << endl;
+  cout << "  -t --test-tone freq" << endl;
+  cout << "    Simply output a test tone and the specified frequency. Only used" << endl;
+  cout << "    for debugging and to verify calibration." << endl;
+  cout << "  -n --no-delay" << endl;
+  cout << "    Transmit immediately, do not wait for a WSPR TX window. Used" << endl;
+  cout << "    for testing only." << endl;
   cout << endl;
   cout << "Frequencies can be specified either as an absolute TX carrier frequency, or" << endl;
   cout << "using one of the following strings. If a string is used, the transmission" << endl;
   cout << "will happen in the middle of the WSPR region of the selected band." << endl;
+  cout << "  LF LF-15 MF MF-15 160m 160m-15 80m 60m 40m 30m 20m 17m 15m 12m 10m 6m 4m 2m" << endl;
   cout << "<B>-15 indicates the WSPR-15 region of band <B>." << endl;
-  cout << "A requested frequency of 0 skips that particular transmission." << endl;
-  cout << "LF LF-15 MF MF-15 160m 160m-15 80m 60m 40m 30m 20m 17m 15m 12m 10m 6m 4m 2m" << endl;
+  cout << endl;
+  cout << "Transmission gaps can be created by specifying a TX frequency of 0" << endl;
+}
+
+// From StackOverflow:
+// http://stackoverflow.com/questions/478898/how-to-execute-a-command-and-get-output-of-command-within-c
+std::string exec(const char * cmd) {
+    FILE* pipe = popen(cmd, "r");
+    if (!pipe) return "ERROR";
+    char buffer[128];
+    std::string result = "";
+    while (!feof(pipe)) {
+      if (fgets(buffer, 128, pipe) != NULL)
+        result += buffer;
+    }
+    pclose(pipe);
+    return result;
 }
 
 void parse_commandline(
@@ -697,27 +672,38 @@ void parse_commandline(
   double & ppm,
   bool & self_cal,
   bool & repeat,
-  bool & random_offset
+  bool & random_offset,
+  double & test_tone,
+  bool & no_delay,
+  mode_type & mode,
+  int & terminate
 ) {
   // Default values
   ppm=0;
   self_cal=false;
   repeat=false;
   random_offset=false;
+  test_tone=NAN;
+  no_delay=false;
+  mode=WSPR;
+  terminate=-1;
 
   static struct option long_options[] = {
     {"help",             no_argument,       0, 'h'},
     {"ppm",              required_argument, 0, 'p'},
     {"self-calibration", no_argument,       0, 's'},
     {"repeat",           no_argument,       0, 'r'},
+    {"terminate",        required_argument, 0, 'x'},
     {"offset",           no_argument,       0, 'o'},
+    {"test-tone",        required_argument, 0, 't'},
+    {"no-delay",         no_argument,       0, 'n'},
     {0, 0, 0, 0}
   };
 
   while (1) {
     /* getopt_long stores the option index here. */
     int option_index = 0;
-    int c = getopt_long (argc, argv, "hp:sro",
+    int c = getopt_long (argc, argv, "hp:srx:ot:",
                      long_options, &option_index);
     if (c == -1)
       break;
@@ -747,8 +733,30 @@ void parse_commandline(
       case 'r':
         repeat=true;
         break;
+      case 'x':
+        terminate=strtol(optarg,&endp,10);
+        if ((optarg==endp)||(*endp!='\0')) {
+          cerr << "Error: could not parse termination argument" << endl;
+          ABORT(-1);
+        }
+        if (terminate<1) {
+          cerr << "Error: termination parameter must be >= 1" << endl;
+          ABORT(-1);
+        }
+        break;
       case 'o':
         random_offset=true;
+        break;
+      case 't':
+        test_tone=strtod(optarg,&endp);
+        mode=TONE;
+        if ((optarg==endp)||(*endp!='\0')) {
+          cerr << "Error: could not parse test tone frequency" << endl;
+          ABORT(-1);
+        }
+        break;
+      case 'n':
+        no_delay=true;
         break;
       case '?':
         /* getopt_long already printed an error message. */
@@ -820,7 +828,7 @@ void parse_commandline(
     } else {
       // Not a string. See if it can be parsed as a double.
       char * endp;
-      parsed_freq=strtod(optarg,&endp);
+      parsed_freq=strtod(argv[optind],&endp);
       if ((optarg==endp)||(*endp!='\0')) {
         cerr << "Error: could not parse transmit frequency: " << argv[optind] << endl;
         ABORT(-1);
@@ -834,61 +842,128 @@ void parse_commandline(
   // Check consistency among command line options.
   if (ppm&&self_cal) {
     cout << "Warning: ppm value is being ignored!" << endl;
+    ppm=0.0;
   }
-  if ((callsign=="")||(locator=="")||(tx_power=="")||(center_freq_set.size()==0)) {
-    cerr << "Error: must specify callsign, locator, dBm, and at least one frequency" << endl;
-    ABORT(-1);
+  if (mode==TONE) {
+    if ((callsign!="")||(locator!="")||(tx_power!="")||(center_freq_set.size()!=0)||random_offset) {
+      cerr << "Warning: callsign, locator, etc. are ignored when generating test tone" << endl;
+    }
+    random_offset=0;
+    if (test_tone<=0) {
+      cerr << "Error: test tone frequency must be positive" << endl;
+      ABORT(-1);
+    }
+  } else {
+    if ((callsign=="")||(locator=="")||(tx_power=="")||(center_freq_set.size()==0)) {
+      cerr << "Error: must specify callsign, locator, dBm, and at least one frequency" << endl;
+      cerr << "Try: wspr --help" << endl;
+      ABORT(-1);
+    }
+    if (self_cal) {
+      if (exec("which ntpdc")=="") {
+        cerr << "Error: ntpdc must be on the path if self calibration option is turned on" << endl;
+        ABORT(-1);
+      }
+      if (exec("which grep")=="") {
+        cerr << "Error: grep must be on the path if self calibration option is turned on" << endl;
+        ABORT(-1);
+      }
+      if (exec("which awk")=="") {
+        cerr << "Error: awk must be on the path if self calibration option is turned on" << endl;
+        ABORT(-1);
+      }
+    }
   }
 
   // Print a summary of the parsed options
-  cout << "Callsign: " << callsign << endl;
-  cout << "Locator:  " << locator << endl;
-  cout << "dBm:      " << tx_power << endl;
-  cout << "Requested TX frequencies:" << endl;
-  stringstream temp;
-  for (unsigned int t=0;t<center_freq_set.size();t++) {
-    temp << setprecision(6) << fixed;
-    temp << "  " << center_freq_set[t]/1e6 << " MHz" << endl;
-  }
-  cout << temp.str();
-  if (self_cal) {
-    cout << "ntpd will be used to peridocially calibrate the transmissions" << endl;
-  } else if (ppm) {
-    cout << "PPM value to be used for all transmissions: " << ppm << endl;
-  }
-  if (repeat) {
-    cout << "Transmissions will continue forever until stopped with CTRL-C" << endl;
-  }
-  if (random_offset) {
-    cout << "A small random frequency offset will be added to all transmisisons" << endl;
+  if (mode==WSPR) {
+    cout << "WSPR packet contents:" << endl;
+    cout << "  Callsign: " << callsign << endl;
+    cout << "  Locator:  " << locator << endl;
+    cout << "  Power:    " << tx_power << " dBm" << endl;
+    cout << "Requested TX frequencies:" << endl;
+    stringstream temp;
+    for (unsigned int t=0;t<center_freq_set.size();t++) {
+      temp << setprecision(6) << fixed;
+      temp << "  " << center_freq_set[t]/1e6 << " MHz" << endl;
+    }
+    cout << temp.str();
+    temp.str("");
+    if (self_cal) {
+      temp << "  ntpd will be used to peridocially calibrate the transmission frequency" << endl;
+    } else if (ppm) {
+      temp << "  PPM value to be used for all transmissions: " << ppm << endl;
+    }
+    if (terminate>0) {
+      temp << "  TX will stop after " << terminate << " transmissions." << endl;
+    } else if (repeat) {
+      temp << "  Transmissions will continue forever until stopped with CTRL-C" << endl;
+    }
+    if (random_offset) {
+      temp << "  A small random frequency offset will be added to all transmisisons" << endl;
+    }
+    if (temp.str().length()) {
+      cout << "Extra options:" << endl;
+      cout << temp.str();
+    }
+    cout << endl;
+  } else {
+    stringstream temp;
+    temp << setprecision(6) << fixed << "A test tone will be generated at frequency " << test_tone/1e6 << " MHz" << endl;
+    cout << temp.str();
+    if (self_cal) {
+      cout << "ntpd will be used upon startup to calibrate the tone" << endl;
+    } else if (ppm) {
+      cout << "PPM value to be used to generate the tone: " << ppm << endl;
+    }
+    cout << endl;
   }
 }
 
 // Call ntpd to obtain the latest calibration coefficient.
-void read_ppm(
+void update_ppm(
   double & ppm
 ) {
+  stringstream ppm_new_string(exec("ntpdc -c loopinfo | grep ppm | awk '{print $2}'"));
+  double ppm_new=0.0;
+  ppm_new_string >> ppm_new;
+  if (abs(ppm_new)>200) {
+    cerr << "Warning: ntpdc absolute ppm value is greater than 200 and is being ignored!" << endl;
+  } else {
+    if (ppm!=ppm_new) {
+      cout << "  Obtained new ppm value: " << ppm_new << endl;
+    }
+    ppm=ppm_new;
+  }
 }
 
-int main(int argc, char *argv[])
-{
-  unsigned char symbols[162];
-  int i;
-  double centre_freq;
-  int wspr15;
-  double wspr_symtime;
-  int nbands = argc - 4;
-  int band = 0;
+/* Return 1 if the difference is negative, otherwise 0.  */
+// From StackOverflow:
+// http://stackoverflow.com/questions/1468596/c-programming-calculate-elapsed-time-in-milliseconds-unix
+int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1) {
+    long int diff = (t2->tv_usec + 1000000 * t2->tv_sec) - (t1->tv_usec + 1000000 * t1->tv_sec);
+    result->tv_sec = diff / 1000000;
+    result->tv_usec = diff % 1000000;
+
+    return (diff<0);
+}
+
+void timeval_print(struct timeval *tv) {
+    char buffer[30];
+    time_t curtime;
+
+    //printf("%ld.%06ld", tv->tv_sec, tv->tv_usec);
+    curtime = tv->tv_sec;
+    //strftime(buffer, 30, "%m-%d-%Y %T", localtime(&curtime));
+    strftime(buffer, 30, "UTC %m-%d-%Y %T", gmtime(&curtime));
+    printf("%s.%03ld", buffer, (tv->tv_usec+500)/1000);
+}
+
+int main(const int argc, char * const argv[]) {
+  // Initialize the RNG
+  srand(time(NULL));
 
   // Parse arguments
-  /*
-  if(argc < 5){
-    printf("Usage: wspr <[prefix/]callsign[/A-Z,/0-9,/00-99]> <locator> <power in dBm> [<frequency in Hz or 0 for interval> ...]\n");
-    printf("\te.g.: sudo ./wspr K1JT/P JO21 10 7040074 0 0 10140174 0 0\n");
-    printf("\tchoose freq in range +/-100 Hz around one of center frequencies: 137500, 475700, 1838100, 3594100, 5288700, 7040100, 10140200, 14097100, 18106100, 21096100, 24926100, 28126100, 50294500, 70092500, 144490500 Hz (WSPR-2), or in range +/-12 Hz around 137612, 475812, 1838212 Hz (WSPR-15).\n");
-    return 1;
-  }
-  */
   string callsign;
   string locator;
   string tx_power;
@@ -897,6 +972,10 @@ int main(int argc, char *argv[])
   bool self_cal;
   bool repeat;
   bool random_offset;
+  double test_tone;
+  bool no_delay;
+  mode_type mode;
+  int terminate;
   parse_commandline(
     argc,
     argv,
@@ -907,104 +986,193 @@ int main(int argc, char *argv[])
     ppm,
     self_cal,
     repeat,
-    random_offset
+    random_offset,
+    test_tone,
+    no_delay,
+    mode,
+    terminate
   );
-
-  // Create WSPR symbols
-  // argv[1]=callsign, argv[2]=locator, argv[3]=power(dBm)
-  //wspr(argv[1], argv[2], argv[3], symbols);
-  wspr(callsign.c_str(), locator.c_str(), tx_power.c_str(), symbols);
-  printf("WSPR codeblock: ");
-  for (i = 0; i < sizeof(symbols)/sizeof(*symbols); i++) {
-    if (i) {
-      cout << ",";
-    }
-    printf("%d", symbols[i]);
-  }
-  printf("\n");
-  system("ls");
-  exit(-1);
+  int nbands=center_freq_set.size();
 
   // Initial configuration
   int mem_fd;
-  setup_io(mem_fd);
-  setup_gpios();
-  txon(mem_fd);
-  setupDMA();
-  printf("Ready to transmit...\n");
+  char *gpio_mem, *gpio_map;
+  volatile unsigned *gpio = NULL;
+  setup_io(mem_fd,gpio_mem,gpio_map,gpio);
+  setup_gpios(gpio);
+  allof7e = (unsigned *)mmap(
+              NULL,
+              0x01000000,  //len
+              PROT_READ|PROT_WRITE,
+              MAP_SHARED,
+              mem_fd,
+              0x20000000  //base
+          );
+  if ((long int)allof7e==-1) {
+    cerr << "Error: mmap error!" << endl;
+    ABORT(-1);
+  }
+  txon();
+  struct PageInfo constPage;
+  struct PageInfo instrPage;
+  struct PageInfo instrs[1024];
+  setupDMA(constPage,instrPage,instrs);
+  txoff();
 
-  // Loop forever...
-  for(;;)
-  {
-    // Turn transmitter off
-    txoff();
+  if (mode==TONE) {
+    // Test tone mode...
+    double wspr_symtime = WSPR_SYMTIME;
+    double tone_spacing=1.0/wspr_symtime;
 
-    // Calculate WSPR parameters for this transmission
-    //centre_freq = atof(argv[band + 4]);
-    centre_freq = center_freq_set[band];
-    wspr15 = (centre_freq > 137600 && centre_freq < 137625) || \
-             (centre_freq > 475800 && centre_freq < 475825) || \
-             (centre_freq > 1838200 && centre_freq < 1838225);
-    wspr_symtime = (wspr15) ? 8.0 * WSPR_SYMTIME : WSPR_SYMTIME;
+    stringstream temp;
+    temp << setprecision(6) << fixed << "Transmitting test tone on frequency " << test_tone/1.0e6 << " MHz" << endl;
+    cout << temp.str();
+    cout << "Press CTRL-C to exit!" << endl;
 
-    // It's not clear how n_iter and f_pwm_clk need to be adjusted based on
-    // center frequency and ppm value... Just guessing here...
-    int n_iter;
-    double f_pwm_clk;
-    if (centre_freq<30e6) {
-      n_iter=22500;
-      f_pwm_clk=31500000.0;
-    } else if (centre_freq<50e6) {
-      n_iter=12000;
-      f_pwm_clk=31500000.0;
-    } else if (centre_freq<144e6) {
-      n_iter=1600;
-      f_pwm_clk=33970588.235294117647058823529413;
-    }
-
-    // Add random offset
-    if (random_offset) {
-      centre_freq+=rand()*(wspr15?WSPR15_RAND_OFFSET:WSPR_RAND_OFFSET);
-    }
-
-    // Create the DMA table for this center frequency
-    double fracs[1024];
-    if(centre_freq) setupDMATab(centre_freq, 1.0/wspr_symtime, wspr_symtime, 4, ppm, f_pwm_clk, n_iter, fracs);
-
-    // Wait for WSPR transmission time to arrive.
-    wait_every((wspr15) ? 15 : 2);
-
-    // Retrieve crystal calibration information
-    if (self_cal) {
-      read_ppm(ppm);
-    }
-
-    // Print a status message right before transmission begins.
-    time_t t;
-    time(&t);
-    char buf[256];
-    strcpy(buf,ctime(&t));
-    buf[strlen(buf)-1]='\0';
-    printf("%s - %s@%f\n", buf, (wspr15)?"wspr-15":"wspr-2", centre_freq);
-
-    // Send the message!
-    if(centre_freq){
-      txon(mem_fd);
-      for (i = 0; i < 162; i++) {
-        txSym(symbols[i], wspr_symtime, f_pwm_clk, n_iter, fracs);
+    txon();
+    int bufPtr=0;
+    vector <double> dma_table_freq;
+    // Set to non-zero value to ensure setupDMATab is called at least once.
+    double ppm_prev=123456;
+    double center_freq_actual;
+    while (true) {
+      if (self_cal) {
+        update_ppm(ppm);
       }
+      if (ppm!=ppm_prev) {
+        setupDMATab(test_tone+1.5*tone_spacing,tone_spacing,F_PLLD_CLK*(1-ppm/1e6),dma_table_freq,center_freq_actual,constPage);
+        if (center_freq_actual!=test_tone+1.5*tone_spacing) {
+          cout << "  Warning: because of hardware limitations, test tone will be transmitted on" << endl;
+          stringstream temp;
+          temp << setprecision(6) << fixed << "  frequency: " << (center_freq_actual-1.5*tone_spacing)/1e6 << " MHz" << endl;
+          cout << temp.str();
+        }
+        ppm_prev=ppm;
+      }
+      txSym(0, center_freq_actual, tone_spacing, 60, dma_table_freq, F_PWM_CLK_INIT, instrs, constPage, bufPtr);
     }
 
-    // Advance to next band
-    band++;
-    if (band >= nbands) {
-      if (!repeat) {
+    // Should never get here...
+
+  } else {
+    // WSPR mode
+
+    // Create WSPR symbols
+    unsigned char symbols[162];
+    wspr(callsign.c_str(), locator.c_str(), tx_power.c_str(), symbols);
+    /*
+    printf("WSPR codeblock: ");
+    for (int i = 0; i < (signed)(sizeof(symbols)/sizeof(*symbols)); i++) {
+      if (i) {
+        cout << ",";
+      }
+      printf("%d", symbols[i]);
+    }
+    printf("\n");
+    */
+
+    printf("Ready to transmit (setup comlete)...\n");
+    int band=0;
+    int n_tx=0;
+    for(;;) {
+      // Calculate WSPR parameters for this transmission
+      double center_freq_desired;
+      center_freq_desired = center_freq_set[band];
+      bool wspr15 =
+           (center_freq_desired > 137600 && center_freq_desired < 137625) || \
+           (center_freq_desired > 475800 && center_freq_desired < 475825) || \
+           (center_freq_desired > 1838200 && center_freq_desired < 1838225);
+      double wspr_symtime = (wspr15) ? 8.0 * WSPR_SYMTIME : WSPR_SYMTIME;
+      double tone_spacing=1.0/wspr_symtime;
+
+      // Add random offset
+      if ((center_freq_desired!=0)&&random_offset) {
+        center_freq_desired+=(2.0*rand()/((double)RAND_MAX+1.0)-1.0)*(wspr15?WSPR15_RAND_OFFSET:WSPR_RAND_OFFSET);
+      }
+
+      // Status message before transmission
+      stringstream temp;
+      temp << setprecision(6) << fixed;
+      temp << "Desired center frequency for " << (wspr15?"WSPR-15":"WSPR") << " transmission: "<< center_freq_desired/1e6 << " MHz" << endl;
+      cout << temp.str();
+
+      // Wait for WSPR transmission window to arrive.
+      if (no_delay) {
+        cout << "  Transmitting immediately (not waiting for WSPR window)" << endl;
+      } else {
+        printf("  Waiting for next WSPR transmission window...\n");
+        wait_every((wspr15) ? 15 : 2);
+      }
+
+      // Update crystal calibration information
+      if (self_cal) {
+        update_ppm(ppm);
+      }
+
+      // Create the DMA table for this center frequency
+      vector <double> dma_table_freq;
+      double center_freq_actual;
+      if (center_freq_desired) {
+        setupDMATab(center_freq_desired,tone_spacing,F_PLLD_CLK*(1-ppm/1e6),dma_table_freq,center_freq_actual,constPage);
+      } else {
+        center_freq_actual=center_freq_desired;
+      }
+
+      // Send the message!
+      //cout << "TX started!" << endl;
+      if (center_freq_actual){
+        // Print a status message right before transmission begins.
+        struct timeval tvBegin, tvEnd, tvDiff;
+        gettimeofday(&tvBegin, NULL);
+        cout << "  TX started at: ";
+        timeval_print(&tvBegin);
+        cout << endl;
+
+        struct timeval sym_start;
+        struct timeval diff;
+        int bufPtr=0;
+        txon();
+        for (int i = 0; i < 162; i++) {
+          gettimeofday(&sym_start,NULL);
+          timeval_subtract(&diff, &sym_start, &tvBegin);
+          double elapsed=diff.tv_sec+diff.tv_usec/1e6;
+          //elapsed=(i)*wspr_symtime;
+          double sched_end=(i+1)*wspr_symtime;
+          //cout << "symbol " << i << " " << wspr_symtime << endl;
+          //cout << sched_end-elapsed << endl;
+          double this_sym=sched_end-elapsed;
+          this_sym=(this_sym<.2)?.2:this_sym;
+          this_sym=(this_sym>2*wspr_symtime)?2*wspr_symtime:this_sym;
+          txSym(symbols[i], center_freq_actual, tone_spacing, sched_end-elapsed, dma_table_freq, F_PWM_CLK_INIT, instrs, constPage, bufPtr);
+        }
+        n_tx++;
+
+        // Turn transmitter off
+        txoff();
+
+        gettimeofday(&tvEnd, NULL);
+        cout << "  TX ended at:   ";
+        timeval_print(&tvEnd);
+        timeval_subtract(&tvDiff, &tvEnd, &tvBegin);
+        printf(" (%ld.%03ld s)\n", tvDiff.tv_sec, (tvDiff.tv_usec+500)/1000);
+
+      } else {
+        cout << "  Skipping transmission" << endl;
+        usleep(1000000);
+      }
+
+      // Advance to next band
+      band=(band+1)%nbands;
+      if ((band==0)&&!repeat) {
         break;
       }
-      band = 0;
-    }
+      if ((terminate>0)&&(n_tx>=terminate)) {
+        break;
+      }
 
+    }
   }
+
   return 0;
 }
 
