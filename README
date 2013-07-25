@@ -7,10 +7,16 @@ port to Antenna (and LPF), operates on LF, MF, HF and VHF bands from
 ******
 Installation / update:
 ******
-  sudo apt-get install git
-  git clone https://github.com/JamesP6000/WsprryPi.git
-  cd WsprryPi
-  make
+  Make sure you are using the latest kernel by updating your system. The latest
+  kernel includes fixes wich improve NTP ppm measurement accuracy:
+    sudo apt-get update
+    sudo apt-get dist-upgrade
+
+  Download and compile code:
+    sudo apt-get install git
+    git clone https://github.com/JamesP6000/WsprryPi.git
+    cd WsprryPi
+    make
 
   See the accompanying BUILD file for more details.
 

@@ -49,7 +49,7 @@ using namespace std;
 // Empirical PLLD clock frequency which minimizes the discrepancy between
 // the ntp measured ppm error and the ppm error measured with an external
 // frequency counter.
-#define F_PLLD_CLK   (500005000.0)
+#define F_PLLD_CLK   (500000000.0)
 // Empirical value for F_PWM_CLK that produces WSPR symbols that are 'close' to
 // 0.682s long. For some reason, despite the use of DMA, the load on the PI
 // affects the TX length of the symbols. However, the varying symbol length is
