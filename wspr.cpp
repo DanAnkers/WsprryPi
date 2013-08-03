@@ -46,10 +46,11 @@ using namespace std;
 // Used for debugging
 #define MARK std::cout << "Currently in file: " << __FILE__ << " line: " << __LINE__ << std::endl
 
-// Empirical PLLD clock frequency which minimizes the discrepancy between
-// the ntp measured ppm error and the ppm error measured with an external
-// frequency counter.
-#define F_PLLD_CLK   (500000000.0)
+// PLLD clock frequency.
+// There seems to be a 2.5ppm offset between the NTP measured frequency
+// error and the frequency error measured by a frequency counter. This fixed
+// PPM offset is compensated for here.
+#define F_PLLD_CLK   (500000000.0*(1-2.500e-6))
 // Empirical value for F_PWM_CLK that produces WSPR symbols that are 'close' to
 // 0.682s long. For some reason, despite the use of DMA, the load on the PI
 // affects the TX length of the symbols. However, the varying symbol length is
@@ -180,7 +181,7 @@ void txon()
     //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 6;  //14mA +10.0dBm
     ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 7;  //16mA +10.6dBm
 
-    struct GPCTL setupword = {6/*SRC*/, 1, 0, 0, 0, 1,0x5a};
+    struct GPCTL setupword = {6/*SRC*/, 1, 0, 0, 0, 3,0x5a};
     ACCESS(CM_GP0CTL) = *((int*)&setupword);
 }
 
@@ -215,6 +216,7 @@ void txSym(
   // Double check...
   assert((tone_freq>=f0_freq)&&(tone_freq<=f1_freq));
   const double f0_ratio=1.0-(tone_freq-f0_freq)/(f1_freq-f0_freq);
+  //cout << "f0_ratio = " << f0_ratio << endl;
   assert ((f0_ratio>=0)&&(f0_ratio<=1));
   const long int n_pwmclk_per_sym=round(f_pwm_clk*tsym);
 
@@ -912,7 +914,7 @@ void parse_commandline(
     temp << setprecision(6) << fixed << "A test tone will be generated at frequency " << test_tone/1e6 << " MHz" << endl;
     cout << temp.str();
     if (self_cal) {
-      cout << "ntpd will be used upon startup to calibrate the tone" << endl;
+      cout << "ntpd will be used to calibrate the tone" << endl;
     } else if (ppm) {
       cout << "PPM value to be used to generate the tone: " << ppm << endl;
     }
@@ -1041,6 +1043,10 @@ int main(const int argc, char * const argv[]) {
       }
       if (ppm!=ppm_prev) {
         setupDMATab(test_tone+1.5*tone_spacing,tone_spacing,F_PLLD_CLK*(1-ppm/1e6),dma_table_freq,center_freq_actual,constPage);
+        //cout << setprecision(30) << dma_table_freq[0] << endl;
+        //cout << setprecision(30) << dma_table_freq[1] << endl;
+        //cout << setprecision(30) << dma_table_freq[2] << endl;
+        //cout << setprecision(30) << dma_table_freq[3] << endl;
         if (center_freq_actual!=test_tone+1.5*tone_spacing) {
           cout << "  Warning: because of hardware limitations, test tone will be transmitted on" << endl;
           stringstream temp;

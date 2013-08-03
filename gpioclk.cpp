@@ -118,8 +118,8 @@ void txon(
     ACCESS(CM_GP0DIV) = div_val;
 
     // Turn on
-    struct GPCTL setupword6= {6/*SRC*/, 1, 0, 0, 0, 1,0x5a};
-    struct GPCTL setupword1= {1/*SRC*/, 1, 0, 0, 0, 1,0x5a};
+    struct GPCTL setupword6= {6/*SRC*/, 1, 0, 0, 0, 3,0x5a};
+    struct GPCTL setupword1= {1/*SRC*/, 1, 0, 0, 0, 3,0x5a};
     struct GPCTL setupword;
     if (source==PLLD) {
       setupword=setupword6;
