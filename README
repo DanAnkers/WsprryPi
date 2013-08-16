@@ -203,6 +203,9 @@ Credits:
   is more precise and does not vary based on system load or PWM clock
   frequency.
 
+  Michael Tatarinov for adding a patch to get PPM info directly from the
+  kernel.
+
   [1] PiFM code from
       http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
   [2] Original WSPR Pi transmitter code by Dan:

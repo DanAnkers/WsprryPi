@@ -921,8 +921,8 @@ void update_ppm(
   status = ntp_adjtime(&ntx);
 
   if (status != TIME_OK) {
-    cerr << "Error: clock not synchronized" << endl;
-    return;
+    //cerr << "Error: clock not synchronized" << endl;
+    //return;
   }
 
   ppm_new = (double)ntx.freq/(double)(1 << 16); /* frequency scale */
