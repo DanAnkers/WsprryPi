@@ -316,6 +316,10 @@ void parse_commandline(
     cerr << "Error: cannot specify both --freq and --divisor" << endl;
     ABORT(-1);
   }
+  if ((!freq_specified)&&(!div_specified)) {
+    cerr << "Error: must specify either --freq or --divisor" << endl;
+    ABORT(-1);
+  }
   if (freq_specified&&(freq<=0)) {
     cerr << "Error: frequency must be positive" << endl;
     ABORT(-1);
