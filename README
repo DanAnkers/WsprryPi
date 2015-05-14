@@ -57,6 +57,11 @@ Usage: (WSPR --help output):
   <B>-15 indicates the WSPR-15 region of band <B>.
 
   Transmission gaps can be created by specifying a TX frequency of 0
+  
+  Note that 'callsign', 'locator', and 'tx_power_dBm' are simply used to fill
+  in the appropriate fields of the WSPR message. Normally, tx_power_dBm should
+  be 10, representing the signal power coming out of the Pi. Set this value
+  appropriately if you are using an external amplifier.
 
 ******
 Radio licensing / RF:
