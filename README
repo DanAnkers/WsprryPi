@@ -158,24 +158,24 @@ PWM Peripheral:
 Example usage:
 ******
   Brief help screen
-    wspr --help
+    ./wspr --help
 
   Transmit a constant test tone at 780 kHz.
-    sudo wspr --test-tone 780e3
+    sudo ./wspr --test-tone 780e3
 
   Using callsign N9NNN, locator EM10, and TX power 33 dBm, transmit a single
   WSPR transmission on the 20m band using NTP based frequency offset
   calibration.
-    sudo wspr --self-calibration N9NNN EM10 33 20m
+    sudo ./wspr --self-calibration N9NNN EM10 33 20m
 
   Transmit a WSPR transmission slightly off-center on 30m every 10 minutes for
   a total of 7 transmissions, and using a fixed PPM correction value.  sudo
-    wspr --repeat --terminate 7 --ppm 43.17 N9NNN EM10 33 10140210 0 0 0 0
+    sudo ./wspr --repeat --terminate 7 --ppm 43.17 N9NNN EM10 33 10140210 0 0 0 0
 
   Transmit repeatedly on 40m, use NTP based frequency offset calibration,
   and add a random frequency offset to each transmission to minimize collisions
   with other transmissions.
-    sudo wspr --repeat --offset --self-calibration N9NNN EM10 33 40m
+    sudo ./wspr --repeat --offset --self-calibration N9NNN EM10 33 40m
 
 ******
 Reference documentation:
