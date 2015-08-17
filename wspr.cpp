@@ -821,7 +821,7 @@ void parse_commandline(
     } else if (!strcmp(argv[optind],"12m")) {
       parsed_freq=24926100.0;
     } else if (!strcmp(argv[optind],"10m")) {
-      parsed_freq=28126200.0;
+      parsed_freq=28126100.0;
     } else if (!strcmp(argv[optind],"6m")) {
       parsed_freq=50294500.0;
     } else if (!strcmp(argv[optind],"4m")) {
