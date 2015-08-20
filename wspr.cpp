@@ -65,7 +65,16 @@ using namespace std;
 #define WSPR_RAND_OFFSET 80
 #define WSPR15_RAND_OFFSET 8
 
-#define BCM2708_PERI_BASE        0x20000000
+//For the original Raspberry Pi:
+//#define BCM2708_PERI_BASE        0x20000000
+//For Raspberry Pi 2:
+//#define BCM2708_PERI_BASE        0x3F000000
+//Now we autodetect it via makefile.
+
+#ifndef BCM2708_PERI_BASE
+ #error "BCM2708_PERI_BASE not defined!"
+#endif
+	
 #define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
 #define PAGE_SIZE (4*1024)
 #define BLOCK_SIZE (4*1024)
@@ -1005,7 +1014,7 @@ int main(const int argc, char * const argv[]) {
               PROT_READ|PROT_WRITE,
               MAP_SHARED,
               mem_fd,
-              0x20000000  //base
+              BCM2708_PERI_BASE  //base
           );
   if ((long int)allof7e==-1) {
     cerr << "Error: mmap error!" << endl;
