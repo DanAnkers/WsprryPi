@@ -41,6 +41,8 @@ License:
 #include <iomanip>
 #include <sys/timex.h>
 
+#include "mailbox.h"
+
 using namespace std;
 
 #define ABORT(a) exit(a)
@@ -65,14 +67,19 @@ using namespace std;
 #define WSPR_RAND_OFFSET 80
 #define WSPR15_RAND_OFFSET 8
 
-//For the original Raspberry Pi:
-//#define BCM2708_PERI_BASE        0x20000000
-//For Raspberry Pi 2:
-//#define BCM2708_PERI_BASE        0x3F000000
 //Now we autodetect it via makefile.
+#ifdef RPI2
 
-#ifndef BCM2708_PERI_BASE
- #error "BCM2708_PERI_BASE not defined!"
+#define BCM2708_PERI_BASE 0x3f000000
+#define MEM_FLAG 0x04
+#pragma message "Raspberry Pi 2 detected."
+
+#else
+
+#define BCM2708_PERI_BASE 0x20000000
+#define MEM_FLAG 0x0c
+#pragma message "Raspberry Pi 1 detected."
+
 #endif
 	
 #define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
@@ -149,30 +156,43 @@ struct PageInfo {
 //struct PageInfo instrPage;
 //struct PageInfo instrs[1024];
 
+static struct {
+    int handle;		/* From mbox_open() */
+    unsigned mem_ref;	/* From mem_alloc() */
+    unsigned bus_addr;	/* From mem_lock() */
+    unsigned char *virt_addr;	/* From mapmem() */ //@Andris: originally uint8_t
+} mbox;
+
+#define BUS_TO_PHYS(x) ((x)&~0xC0000000)
+
 // Get the physical address of a page of virtual memory
 void getRealMemPage(void** vAddr, void** pAddr) {
-    void* a = (void*)valloc(4096);
+    //void* a = (void*)valloc(4096); //@Andris: allocate aligned memory
+    //((int*)a)[0] = 1;  // use page to force allocation. //@Andris: just write something into it to force allocation flag
+    //mlock(a, 4096);  // lock into ram.
+    //*vAddr = a;  // yay - we know the virtual address
 
-    ((int*)a)[0] = 1;  // use page to force allocation.
+    //unsigned long long frameinfo;
 
-    mlock(a, 4096);  // lock into ram.
+    //int fp = open("/proc/self/pagemap", 'r');
+    //lseek(fp, ((long int)a)/4096*8, SEEK_SET);
+    //read(fp, &frameinfo, sizeof(frameinfo));
 
-    *vAddr = a;  // yay - we know the virtual address
+    //*pAddr = (void*)((long int)(frameinfo*4096));
 
-    unsigned long long frameinfo;
-
-    int fp = open("/proc/self/pagemap", 'r');
-    lseek(fp, ((long int)a)/4096*8, SEEK_SET);
-    read(fp, &frameinfo, sizeof(frameinfo));
-
-    *pAddr = (void*)((long int)(frameinfo*4096));
+    //@Andris: should open mbox first!
+    mbox.mem_ref=mem_alloc(mbox.handle, 4096, 4096, MEM_FLAG);
+    mbox.bus_addr = mem_lock(mbox.handle, mbox.mem_ref);
+    mbox.virt_addr = (unsigned char*)mapmem(BUS_TO_PHYS(mbox.bus_addr), 4096);
+	//printf("mbox bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,mbox.virt_addr,mbox.mem_ref);
+    *pAddr = (void*)mbox.bus_addr;
+    *vAddr = mbox.virt_addr;
 }
 
 void freeRealMemPage(void* vAddr) {
-
-    munlock(vAddr, 4096);  // unlock ram.
-
-    free(vAddr);
+	//@Andris: todo
+    //munlock(vAddr, 4096);  // unlock ram.
+    //free(vAddr);
 }
 
 void txon()
@@ -967,6 +987,15 @@ void timeval_print(struct timeval *tv) {
     printf("%s.%03ld", buffer, (tv->tv_usec+500)/1000);
 }
 
+int open_mbox()
+{
+    unlink(DEVICE_FILE_NAME);
+    if (mknod(DEVICE_FILE_NAME, S_IFCHR|0600, makedev(100, 0)) < 0) { printf("Failed to create mailbox device.\n"); return 1; }
+    mbox.handle = mbox_open();
+    if (mbox.handle < 0) { printf("Failed to open mailbox.\n"); return 1; }
+    return 0;
+}
+
 int main(const int argc, char * const argv[]) {
   // Initialize the RNG
   srand(time(NULL));
@@ -1006,6 +1035,7 @@ int main(const int argc, char * const argv[]) {
   int mem_fd;
   char *gpio_mem, *gpio_map;
   volatile unsigned *gpio = NULL;
+  
   setup_io(mem_fd,gpio_mem,gpio_map,gpio);
   setup_gpios(gpio);
   allof7e = (unsigned *)mmap(
@@ -1020,6 +1050,8 @@ int main(const int argc, char * const argv[]) {
     cerr << "Error: mmap error!" << endl;
     ABORT(-1);
   }
+  printf("open_mbox\n");
+  if (open_mbox()) return 1;
   txon();
   struct PageInfo constPage;
   struct PageInfo instrPage;
