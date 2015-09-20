@@ -228,7 +228,6 @@ void deallocMemPool()
 	    mem_unlock(mbox.handle, mbox.mem_ref);
 	    mem_free(mbox.handle, mbox.mem_ref);	
 	}
-	printf("deallocMemPool\n");
 }
 
 void freeRealMemPage(void* vAddr) {
@@ -382,6 +381,7 @@ void setupDMATab(
   // Create DMA table of tuning words. WSPR tone i will use entries 2*i and
   // 2*i+1 to generate the appropriate tone.
   dma_table_freq.resize(1024);
+  printf("tone_spacing: %g\n",tone_spacing);
   double tone0_freq=center_freq_actual-1.5*tone_spacing;
   vector <long int> tuning_word(1024);
   for (int i=0;i<8;i++) {

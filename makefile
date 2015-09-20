@@ -17,6 +17,7 @@ gpioclk: gpioclk.cpp
 clean:
 	-rm gpioclk
 	-rm wspr
+	-rm mailbox.o
 
 .PHONY: install
 install: wspr
