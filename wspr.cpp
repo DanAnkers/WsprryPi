@@ -168,17 +168,18 @@ static struct {
     int handle;		/* From mbox_open() */
     unsigned mem_ref;	/* From mem_alloc() */
     unsigned bus_addr;	/* From mem_lock() */
-    unsigned char *virt_addr;	/* From mapmem() */ //@Andris: originally uint8_t
+    unsigned char *virt_addr;	/* From mapmem() */ //ha7ilm: originally uint8_t
 	unsigned pool_size;
 	unsigned pool_cnt;
 } mbox;
 
 #define BUS_TO_PHYS(x) ((x)&~0xC0000000)
 
+#if 0
 // Get the physical address of a page of virtual memory
 void getRealMemPage(void** vAddr, void** pAddr) {
-    //void* a = (void*)valloc(4096); //@Andris: allocate aligned memory
-    //((int*)a)[0] = 1;  // use page to force allocation. //@Andris: just write something into it to force allocation flag
+    //void* a = (void*)valloc(4096); //ha7ilm: allocates aligned memory
+    //((int*)a)[0] = 1;  // use page to force allocation. //ha7ilm: just writes something into it to force allocation flag
     //mlock(a, 4096);  // lock into ram.
     //*vAddr = a;  // yay - we know the virtual address
 
@@ -190,7 +191,7 @@ void getRealMemPage(void** vAddr, void** pAddr) {
 
     //*pAddr = (void*)((long int)(frameinfo*4096));
 
-    //@Andris: should open mbox first!
+    //ha7ilm: should open mbox first!
     mbox.mem_ref=mem_alloc(mbox.handle, 4096, 4096, MEM_FLAG);
     mbox.bus_addr = mem_lock(mbox.handle, mbox.mem_ref);
     mbox.virt_addr = (unsigned char*)mapmem(BUS_TO_PHYS(mbox.bus_addr), 4096);
@@ -199,6 +200,12 @@ void getRealMemPage(void** vAddr, void** pAddr) {
     *vAddr = mbox.virt_addr;
 }
 
+void freeRealMemPage(void* vAddr) {
+    //munlock(vAddr, 4096);  // unlock ram.
+    //free(vAddr);
+}
+#endif
+
 void allocMemPool(unsigned numpages)
 {
     mbox.mem_ref=mem_alloc(mbox.handle, 4096*numpages, 4096, MEM_FLAG);
@@ -206,7 +213,7 @@ void allocMemPool(unsigned numpages)
     mbox.virt_addr = (unsigned char*)mapmem(BUS_TO_PHYS(mbox.bus_addr), 4096*numpages);
 	mbox.pool_size=numpages;
 	mbox.pool_cnt=0;
-	printf("allocMemoryPool bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,(unsigned)mbox.virt_addr,mbox.mem_ref);
+	//printf("allocMemoryPool bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,(unsigned)mbox.virt_addr,mbox.mem_ref);
 }
 
 int getRealMemPageFromPool(void ** vAddr, void **pAddr)
@@ -215,7 +222,7 @@ int getRealMemPageFromPool(void ** vAddr, void **pAddr)
 	unsigned offset = mbox.pool_cnt*4096;
 	*vAddr = (void*)(((unsigned)mbox.virt_addr) + offset);
 	*pAddr = (void*)(((unsigned)mbox.bus_addr) + offset);
-	printf("getRealMemoryPageFromPool bus_addr=%x virt_addr=%x\n", (unsigned)*pAddr,(unsigned)*vAddr);
+	//printf("getRealMemoryPageFromPool bus_addr=%x virt_addr=%x\n", (unsigned)*pAddr,(unsigned)*vAddr);
 	mbox.pool_cnt++;
 	return 0;
 }
@@ -228,12 +235,6 @@ void deallocMemPool()
 	    mem_unlock(mbox.handle, mbox.mem_ref);
 	    mem_free(mbox.handle, mbox.mem_ref);	
 	}
-}
-
-void freeRealMemPage(void* vAddr) {
-	//@Andris: todo
-    //munlock(vAddr, 4096);  // unlock ram.
-    //free(vAddr);
 }
 
 void txon()
@@ -293,7 +294,7 @@ void txSym(
 
   long int n_pwmclk_transmitted=0;
   long int n_f0_transmitted=0;
-  printf("<instrs[bufPtr] begin=%x>",(unsigned)&instrs[bufPtr]);
+  //printf("<instrs[bufPtr] begin=%x>",(unsigned)&instrs[bufPtr]);
   while (n_pwmclk_transmitted<n_pwmclk_per_sym) {
     // Number of PWM clocks for this iteration
     long int n_pwmclk=PWM_CLOCKS_PER_ITER_NOMINAL;
@@ -335,7 +336,7 @@ void txSym(
     n_pwmclk_transmitted+=n_pwmclk;
     n_f0_transmitted+=n_f0;
   }
-  printf("<instrs[bufPtr]=%x %x>",(unsigned)instrs[bufPtr].v,(unsigned)instrs[bufPtr].p);
+  //printf("<instrs[bufPtr]=%x %x>",(unsigned)instrs[bufPtr].v,(unsigned)instrs[bufPtr].p);
 }
 
 void unSetupDMA(){
@@ -381,7 +382,6 @@ void setupDMATab(
   // Create DMA table of tuning words. WSPR tone i will use entries 2*i and
   // 2*i+1 to generate the appropriate tone.
   dma_table_freq.resize(1024);
-  printf("tone_spacing: %g\n",tone_spacing);
   double tone0_freq=center_freq_actual-1.5*tone_spacing;
   vector <long int> tuning_word(1024);
   for (int i=0;i<8;i++) {
@@ -1203,9 +1203,7 @@ int main(const int argc, char * const argv[]) {
       vector <double> dma_table_freq;
       double center_freq_actual;
       if (center_freq_desired) {
-		printf("<setupDMATab>");
         setupDMATab(center_freq_desired,tone_spacing,F_PLLD_CLK*(1-ppm/1e6),dma_table_freq,center_freq_actual,constPage);
-		printf("</setupDMATab>\n");
       } else {
         center_freq_actual=center_freq_desired;
       }
@@ -1235,9 +1233,7 @@ int main(const int argc, char * const argv[]) {
           double this_sym=sched_end-elapsed;
           this_sym=(this_sym<.2)?.2:this_sym;
           this_sym=(this_sym>2*wspr_symtime)?2*wspr_symtime:this_sym;
-		  printf("<txSym>");
           txSym(symbols[i], center_freq_actual, tone_spacing, sched_end-elapsed, dma_table_freq, F_PWM_CLK_INIT, instrs, constPage, bufPtr);
-		  printf("</txSym>\n");
         }
         n_tx++;
 
