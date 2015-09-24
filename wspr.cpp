@@ -18,6 +18,8 @@ License:
 
 */
 
+//ha7ilm: added RPi2 support based on a patch to PiFmRds by Cristophe Jacquet and Richard Hirst: http://git.io/vn7O9
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
