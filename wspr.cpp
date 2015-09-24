@@ -782,7 +782,7 @@ void parse_commandline(
   while (1) {
     /* getopt_long stores the option index here. */
     int option_index = 0;
-    int c = getopt_long (argc, argv, "hp:srx:ot:",
+    int c = getopt_long (argc, argv, "hp:srx:ot:n",
                      long_options, &option_index);
     if (c == -1)
       break;
