@@ -4,6 +4,8 @@ Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO
 port to Antenna (and LPF), operates on LF, MF, HF and VHF bands from
 0 to 250 MHz.
 
+It is now compatible with both the original Raspberry Pi and the Raspberry Pi 2.
+
 ******
 Installation / update:
 ******

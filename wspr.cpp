@@ -18,6 +18,8 @@ License:
 
 */
 
+//ha7ilm: added RPi2 support based on a patch to PiFmRds by Cristophe Jacquet and Richard Hirst: http://git.io/vn7O9
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -40,6 +42,8 @@ License:
 #include <sstream>
 #include <iomanip>
 #include <sys/timex.h>
+
+#include "mailbox.h"
 
 using namespace std;
 
@@ -65,8 +69,21 @@ using namespace std;
 #define WSPR_RAND_OFFSET 80
 #define WSPR15_RAND_OFFSET 8
 
-#define BCM2708_PERI_BASE        0x20000000
-#define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
+//Now we autodetect it via makefile.
+#ifdef RPI2
+
+#define BCM2708_PERI_BASE 0x3f000000
+#define MEM_FLAG 0x04
+#pragma message "Raspberry Pi 2 detected."
+
+#else
+
+#define BCM2708_PERI_BASE 0x20000000
+#define MEM_FLAG 0x0c
+#pragma message "Raspberry Pi 1 detected."
+
+#endif
+
 #define PAGE_SIZE (4*1024)
 #define BLOCK_SIZE (4*1024)
 
@@ -86,13 +103,22 @@ volatile unsigned *allof7e = NULL;
 #define ACCESS(base) *(volatile int*)((long int)allof7e+base-0x7e000000)
 #define SETBIT(base, bit) ACCESS(base) |= 1<<bit
 #define CLRBIT(base, bit) ACCESS(base) &= ~(1<<bit)
+
+#define GPIO_VIRT_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
+#define DMA_VIRT_BASE				  (BCM2708_PERI_BASE + 0x7000)
+
+//it was GPFSEL0 before:
+#define GPIO_PHYS_BASE (0x7E200000)
 #define CM_GP0CTL (0x7e101070)
-#define GPFSEL0 (0x7E200000)
-#define PADS_GPIO_0_27  (0x7e10002c)
 #define CM_GP0DIV (0x7e101074)
-#define CLKBASE (0x7E101000)
-#define DMABASE (0x7E007000)
-#define PWMBASE  (0x7e20C000) /* PWM controller */
+#define PADS_GPIO_0_27  (0x7e10002c)
+#define CLK_PHYS_BASE (0x7E101000)
+#define DMA_PHYS_BASE (0x7E007000)
+#define PWM_PHYS_BASE  (0x7e20C000) /* PWM controller */
+
+
+
+
 
 typedef enum {WSPR,TONE} mode_type;
 
@@ -140,37 +166,84 @@ struct PageInfo {
 //struct PageInfo instrPage;
 //struct PageInfo instrs[1024];
 
+static struct {
+    int handle;		/* From mbox_open() */
+    unsigned mem_ref;	/* From mem_alloc() */
+    unsigned bus_addr;	/* From mem_lock() */
+    unsigned char *virt_addr;	/* From mapmem() */ //ha7ilm: originally uint8_t
+	unsigned pool_size;
+	unsigned pool_cnt;
+} mbox;
+
+#define BUS_TO_PHYS(x) ((x)&~0xC0000000)
+
+#if 0
 // Get the physical address of a page of virtual memory
 void getRealMemPage(void** vAddr, void** pAddr) {
-    void* a = (void*)valloc(4096);
+    //void* a = (void*)valloc(4096); //ha7ilm: allocates aligned memory
+    //((int*)a)[0] = 1;  // use page to force allocation. //ha7ilm: just writes something into it to force allocation flag
+    //mlock(a, 4096);  // lock into ram.
+    //*vAddr = a;  // yay - we know the virtual address
 
-    ((int*)a)[0] = 1;  // use page to force allocation.
+    //unsigned long long frameinfo;
 
-    mlock(a, 4096);  // lock into ram.
+    //int fp = open("/proc/self/pagemap", 'r');
+    //lseek(fp, ((long int)a)/4096*8, SEEK_SET);
+    //read(fp, &frameinfo, sizeof(frameinfo));
 
-    *vAddr = a;  // yay - we know the virtual address
+    //*pAddr = (void*)((long int)(frameinfo*4096));
 
-    unsigned long long frameinfo;
-
-    int fp = open("/proc/self/pagemap", 'r');
-    lseek(fp, ((long int)a)/4096*8, SEEK_SET);
-    read(fp, &frameinfo, sizeof(frameinfo));
-
-    *pAddr = (void*)((long int)(frameinfo*4096));
+    //ha7ilm: should open mbox first!
+    mbox.mem_ref=mem_alloc(mbox.handle, 4096, 4096, MEM_FLAG);
+    mbox.bus_addr = mem_lock(mbox.handle, mbox.mem_ref);
+    mbox.virt_addr = (unsigned char*)mapmem(BUS_TO_PHYS(mbox.bus_addr), 4096);
+	printf("mbox bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,(unsigned)mbox.virt_addr,mbox.mem_ref);
+    *pAddr = (void*)mbox.bus_addr;
+    *vAddr = mbox.virt_addr;
 }
 
 void freeRealMemPage(void* vAddr) {
+    //munlock(vAddr, 4096);  // unlock ram.
+    //free(vAddr);
+}
+#endif
 
-    munlock(vAddr, 4096);  // unlock ram.
+void allocMemPool(unsigned numpages)
+{
+    mbox.mem_ref=mem_alloc(mbox.handle, 4096*numpages, 4096, MEM_FLAG);
+    mbox.bus_addr = mem_lock(mbox.handle, mbox.mem_ref);
+    mbox.virt_addr = (unsigned char*)mapmem(BUS_TO_PHYS(mbox.bus_addr), 4096*numpages);
+	mbox.pool_size=numpages;
+	mbox.pool_cnt=0;
+	//printf("allocMemoryPool bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,(unsigned)mbox.virt_addr,mbox.mem_ref);
+}
 
-    free(vAddr);
+int getRealMemPageFromPool(void ** vAddr, void **pAddr)
+{
+	if(mbox.pool_cnt>=mbox.pool_size) return 1;
+	unsigned offset = mbox.pool_cnt*4096;
+	*vAddr = (void*)(((unsigned)mbox.virt_addr) + offset);
+	*pAddr = (void*)(((unsigned)mbox.bus_addr) + offset);
+	//printf("getRealMemoryPageFromPool bus_addr=%x virt_addr=%x\n", (unsigned)*pAddr,(unsigned)*vAddr);
+	mbox.pool_cnt++;
+	return 0;
+}
+
+void deallocMemPool()
+{
+	if(mbox.virt_addr) //it will be 0 by default as in .bss
+	{
+	    unmapmem(mbox.virt_addr, mbox.pool_size*4096);
+	    mem_unlock(mbox.handle, mbox.mem_ref);
+	    mem_free(mbox.handle, mbox.mem_ref);	
+	}
 }
 
 void txon()
 {
-    SETBIT(GPFSEL0 , 14);
-    CLRBIT(GPFSEL0 , 13);
-    CLRBIT(GPFSEL0 , 12);
+    SETBIT(GPIO_PHYS_BASE , 14);
+    CLRBIT(GPIO_PHYS_BASE , 13);
+    CLRBIT(GPIO_PHYS_BASE , 12);
 
     // Set GPIO drive strength, more info: http://www.scribd.com/doc/101830961/GPIO-Pads-Control2
     //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 0;  //2mA -3.4dBm
@@ -223,6 +296,7 @@ void txSym(
 
   long int n_pwmclk_transmitted=0;
   long int n_f0_transmitted=0;
+  //printf("<instrs[bufPtr] begin=%x>",(unsigned)&instrs[bufPtr]);
   while (n_pwmclk_transmitted<n_pwmclk_per_sym) {
     // Number of PWM clocks for this iteration
     long int n_pwmclk=PWM_CLOCKS_PER_ITER_NOMINAL;
@@ -242,33 +316,34 @@ void txSym(
     // Configure the transmission for this iteration
     // Set GPIO pin to transmit f0
     bufPtr++;
-    while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    while( ACCESS(DMA_PHYS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.p + f0_idx*4;
 
     // Wait for n_f0 PWM clocks
     bufPtr++;
-    while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    while( ACCESS(DMA_PHYS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = n_f0;
 
     // Set GPIO pin to transmit f1
     bufPtr++;
-    while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    while( ACCESS(DMA_PHYS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.p + f1_idx*4;
 
     // Wait for n_f1 PWM clocks
     bufPtr=(bufPtr+1) % (1024);
-    while( ACCESS(DMABASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    while( ACCESS(DMA_PHYS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = n_f1;
 
     // Update counters
     n_pwmclk_transmitted+=n_pwmclk;
     n_f0_transmitted+=n_f0;
   }
+  //printf("<instrs[bufPtr]=%x %x>",(unsigned)instrs[bufPtr].v,(unsigned)instrs[bufPtr].p);
 }
 
 void unSetupDMA(){
     printf("exiting\n");
-    struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS(DMABASE));
+    struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS(DMA_PHYS_BASE));
     DMA0->CS =1<<31;  // reset dma controller
     txoff();
 }
@@ -342,13 +417,16 @@ void setupDMA(
   struct PageInfo instrs[]
 ){
    atexit(unSetupDMA);
+   atexit(deallocMemPool);
    signal (SIGINT, handSig);
    signal (SIGTERM, handSig);
    signal (SIGHUP, handSig);
    signal (SIGQUIT, handSig);
 
+   allocMemPool(1025);
+
    // Allocate a page of ram for the constants
-   getRealMemPage(&constPage.v, &constPage.p);
+   getRealMemPageFromPool(&constPage.v, &constPage.p);
 
    // Create 1024 instructions allocating one page at a time.
    // Even instructions target the GP0 Clock divider
@@ -356,7 +434,7 @@ void setupDMA(
    int instrCnt = 0;
    while (instrCnt<1024) {
      // Allocate a page of ram for the instructions
-     getRealMemPage(&instrPage.v, &instrPage.p);
+     getRealMemPageFromPool(&instrPage.v, &instrPage.p);
 
      // make copy instructions
      // Only create as many instructions as will fit in the recently
@@ -368,7 +446,7 @@ void setupDMA(
        instrs[instrCnt].v = (void*)((long int)instrPage.v + sizeof(struct CB)*i);
        instrs[instrCnt].p = (void*)((long int)instrPage.p + sizeof(struct CB)*i);
        instr0->SOURCE_AD = (unsigned long int)constPage.p+2048;
-       instr0->DEST_AD = PWMBASE+0x18 /* FIF1 */;
+       instr0->DEST_AD = PWM_PHYS_BASE+0x18 /* FIF1 */;
        instr0->TXFR_LEN = 4;
        instr0->STRIDE = 0;
        //instr0->NEXTCONBK = (int)instrPage.p + sizeof(struct CB)*(i+1);
@@ -392,27 +470,27 @@ void setupDMA(
    ((struct CB*)(instrs[1023].v))->NEXTCONBK = (long int)instrs[0].p;
 
    // set up a clock for the PWM
-   ACCESS(CLKBASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000026;  // Source=PLLD and disable
+   ACCESS(CLK_PHYS_BASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000026;  // Source=PLLD and disable
    usleep(1000);
-   //ACCESS(CLKBASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002800;
-   ACCESS(CLKBASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002000;  // set PWM div to 2, for 250MHz
-   ACCESS(CLKBASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000016;  // Source=PLLD and enable
+   //ACCESS(CLK_PHYS_BASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002800;
+   ACCESS(CLK_PHYS_BASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002000;  // set PWM div to 2, for 250MHz
+   ACCESS(CLK_PHYS_BASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000016;  // Source=PLLD and enable
    usleep(1000);
 
    // set up pwm
-   ACCESS(PWMBASE + 0x0 /* CTRL*/) = 0;
+   ACCESS(PWM_PHYS_BASE + 0x0 /* CTRL*/) = 0;
    usleep(1000);
-   ACCESS(PWMBASE + 0x4 /* status*/) = -1;  // clear errors
+   ACCESS(PWM_PHYS_BASE + 0x4 /* status*/) = -1;  // clear errors
    usleep(1000);
    // Range should default to 32, but it is set at 2048 after reset on my RPi.
-   ACCESS(PWMBASE + 0x10)=32;
-   ACCESS(PWMBASE + 0x20)=32;
-   ACCESS(PWMBASE + 0x0 /* CTRL*/) = -1; //(1<<13 /* Use fifo */) | (1<<10 /* repeat */) | (1<<9 /* serializer */) | (1<<8 /* enable ch */) ;
+   ACCESS(PWM_PHYS_BASE + 0x10)=32;
+   ACCESS(PWM_PHYS_BASE + 0x20)=32;
+   ACCESS(PWM_PHYS_BASE + 0x0 /* CTRL*/) = -1; //(1<<13 /* Use fifo */) | (1<<10 /* repeat */) | (1<<9 /* serializer */) | (1<<8 /* enable ch */) ;
    usleep(1000);
-   ACCESS(PWMBASE + 0x8 /* DMAC*/) = (1<<31 /* DMA enable */) | 0x0707;
+   ACCESS(PWM_PHYS_BASE + 0x8 /* DMAC*/) = (1<<31 /* DMA enable */) | 0x0707;
 
    //activate dma
-   struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS(DMABASE));
+   struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS(DMA_PHYS_BASE));
    DMA0->CS =1<<31;  // reset
    DMA0->CONBLK_AD=0;
    DMA0->TI=0;
@@ -455,7 +533,7 @@ void setup_io(
                    PROT_READ|PROT_WRITE,
                    MAP_SHARED|MAP_FIXED,
                    mem_fd,
-                   GPIO_BASE
+                   GPIO_VIRT_BASE
                );
 
     if ((long)gpio_map < 0) {
@@ -706,7 +784,7 @@ void parse_commandline(
   while (1) {
     /* getopt_long stores the option index here. */
     int option_index = 0;
-    int c = getopt_long (argc, argv, "hp:srx:ot:",
+    int c = getopt_long (argc, argv, "hp:srx:ot:n",
                      long_options, &option_index);
     if (c == -1)
       break;
@@ -958,6 +1036,15 @@ void timeval_print(struct timeval *tv) {
     printf("%s.%03ld", buffer, (tv->tv_usec+500)/1000);
 }
 
+int open_mbox()
+{
+    unlink(DEVICE_FILE_NAME);
+    if (mknod(DEVICE_FILE_NAME, S_IFCHR|0600, makedev(100, 0)) < 0) { printf("Failed to create mailbox device.\n"); return 1; }
+    mbox.handle = mbox_open();
+    if (mbox.handle < 0) { printf("Failed to open mailbox.\n"); return 1; }
+    return 0;
+}
+
 int main(const int argc, char * const argv[]) {
   // Initialize the RNG
   srand(time(NULL));
@@ -997,20 +1084,22 @@ int main(const int argc, char * const argv[]) {
   int mem_fd;
   char *gpio_mem, *gpio_map;
   volatile unsigned *gpio = NULL;
+  
   setup_io(mem_fd,gpio_mem,gpio_map,gpio);
   setup_gpios(gpio);
   allof7e = (unsigned *)mmap(
               NULL,
-              0x01000000,  //len
+              0x002FFFFF,  //len
               PROT_READ|PROT_WRITE,
               MAP_SHARED,
               mem_fd,
-              0x20000000  //base
+              BCM2708_PERI_BASE  //base
           );
   if ((long int)allof7e==-1) {
     cerr << "Error: mmap error!" << endl;
     ABORT(-1);
   }
+  if (open_mbox()) return 1;
   txon();
   struct PageInfo constPage;
   struct PageInfo instrPage;
@@ -1029,7 +1118,7 @@ int main(const int argc, char * const argv[]) {
     cout << "Press CTRL-C to exit!" << endl;
 
     txon();
-    int bufPtr=0;
+    int bufPtr=0; 
     vector <double> dma_table_freq;
     // Set to non-zero value to ensure setupDMATab is called at least once.
     double ppm_prev=123456;
@@ -1074,7 +1163,7 @@ int main(const int argc, char * const argv[]) {
     printf("\n");
     */
 
-    printf("Ready to transmit (setup comlete)...\n");
+    printf("Ready to transmit (setup complete)...\n");
     int band=0;
     int n_tx=0;
     for(;;) {

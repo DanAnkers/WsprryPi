@@ -49,7 +49,19 @@ using namespace std;
 #define F_XTAL     (19200000.0)
 #define F_PLLD_CLK (500000000.0)
 
-#define BCM2708_PERI_BASE        0x20000000
+//Now we autodetect it via makefile.
+#ifdef RPI2
+
+#define BCM2708_PERI_BASE 0x3f000000
+#pragma message "Raspberry Pi 2 detected."
+
+#else
+
+#define BCM2708_PERI_BASE 0x20000000
+#pragma message "Raspberry Pi 1 detected."
+
+#endif
+
 #define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
 #define PAGE_SIZE (4*1024)
 #define BLOCK_SIZE (4*1024)
@@ -388,11 +400,11 @@ int main(const int argc, char * const argv[]) {
   setup_gpios(gpio);
   allof7e = (unsigned *)mmap(
               NULL,
-              0x01000000,  //len
+              0x002FFFFF,  //len
               PROT_READ|PROT_WRITE,
               MAP_SHARED,
               mem_fd,
-              0x20000000  //base
+              BCM2708_PERI_BASE //base
           );
   if ((long int)allof7e==-1) {
     cerr << "Error: mmap error!" << endl;
