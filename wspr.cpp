@@ -726,21 +726,6 @@ void print_usage() {
   cout << "Transmission gaps can be created by specifying a TX frequency of 0" << endl;
 }
 
-// From StackOverflow:
-// http://stackoverflow.com/questions/478898/how-to-execute-a-command-and-get-output-of-command-within-c
-std::string exec(const char * cmd) {
-    FILE* pipe = popen(cmd, "r");
-    if (!pipe) return "ERROR";
-    char buffer[128];
-    std::string result = "";
-    while (!feof(pipe)) {
-      if (fgets(buffer, 128, pipe) != NULL)
-        result += buffer;
-    }
-    pclose(pipe);
-    return result;
-}
-
 void parse_commandline(
   // Inputs
   const int & argc,
