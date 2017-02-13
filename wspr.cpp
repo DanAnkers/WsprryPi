@@ -69,19 +69,15 @@ using namespace std;
 #define WSPR_RAND_OFFSET 80
 #define WSPR15_RAND_OFFSET 8
 
-//Now we autodetect it via makefile.
+// Choose proper base address depending on RPI1/RPI2 setting from makefile.
 #ifdef RPI2
-
 #define BCM2708_PERI_BASE 0x3f000000
 #define MEM_FLAG 0x04
 #pragma message "Raspberry Pi 2 detected."
-
 #else
-
 #define BCM2708_PERI_BASE 0x20000000
 #define MEM_FLAG 0x0c
 #pragma message "Raspberry Pi 1 detected."
-
 #endif
 
 #define PAGE_SIZE (4*1024)
@@ -105,7 +101,7 @@ volatile unsigned *allof7e = NULL;
 #define CLRBIT(base, bit) ACCESS(base) &= ~(1<<bit)
 
 #define GPIO_VIRT_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
-#define DMA_VIRT_BASE				  (BCM2708_PERI_BASE + 0x7000)
+#define DMA_VIRT_BASE                  (BCM2708_PERI_BASE + 0x7000)
 
 //it was GPFSEL0 before:
 #define GPIO_PHYS_BASE (0x7E200000)
@@ -167,12 +163,12 @@ struct PageInfo {
 //struct PageInfo instrs[1024];
 
 static struct {
-    int handle;		/* From mbox_open() */
-    unsigned mem_ref;	/* From mem_alloc() */
-    unsigned bus_addr;	/* From mem_lock() */
-    unsigned char *virt_addr;	/* From mapmem() */ //ha7ilm: originally uint8_t
-	unsigned pool_size;
-	unsigned pool_cnt;
+    int handle;        /* From mbox_open() */
+    unsigned mem_ref;    /* From mem_alloc() */
+    unsigned bus_addr;    /* From mem_lock() */
+    unsigned char *virt_addr;    /* From mapmem() */ //ha7ilm: originally uint8_t
+    unsigned pool_size;
+    unsigned pool_cnt;
 } mbox;
 
 #define BUS_TO_PHYS(x) ((x)&~0xC0000000)
@@ -197,7 +193,7 @@ void getRealMemPage(void** vAddr, void** pAddr) {
     mbox.mem_ref=mem_alloc(mbox.handle, 4096, 4096, MEM_FLAG);
     mbox.bus_addr = mem_lock(mbox.handle, mbox.mem_ref);
     mbox.virt_addr = (unsigned char*)mapmem(BUS_TO_PHYS(mbox.bus_addr), 4096);
-	printf("mbox bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,(unsigned)mbox.virt_addr,mbox.mem_ref);
+    printf("mbox bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,(unsigned)mbox.virt_addr,mbox.mem_ref);
     *pAddr = (void*)mbox.bus_addr;
     *vAddr = mbox.virt_addr;
 }
@@ -213,30 +209,30 @@ void allocMemPool(unsigned numpages)
     mbox.mem_ref=mem_alloc(mbox.handle, 4096*numpages, 4096, MEM_FLAG);
     mbox.bus_addr = mem_lock(mbox.handle, mbox.mem_ref);
     mbox.virt_addr = (unsigned char*)mapmem(BUS_TO_PHYS(mbox.bus_addr), 4096*numpages);
-	mbox.pool_size=numpages;
-	mbox.pool_cnt=0;
-	//printf("allocMemoryPool bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,(unsigned)mbox.virt_addr,mbox.mem_ref);
+    mbox.pool_size=numpages;
+    mbox.pool_cnt=0;
+    //printf("allocMemoryPool bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,(unsigned)mbox.virt_addr,mbox.mem_ref);
 }
 
 int getRealMemPageFromPool(void ** vAddr, void **pAddr)
 {
-	if(mbox.pool_cnt>=mbox.pool_size) return 1;
-	unsigned offset = mbox.pool_cnt*4096;
-	*vAddr = (void*)(((unsigned)mbox.virt_addr) + offset);
-	*pAddr = (void*)(((unsigned)mbox.bus_addr) + offset);
-	//printf("getRealMemoryPageFromPool bus_addr=%x virt_addr=%x\n", (unsigned)*pAddr,(unsigned)*vAddr);
-	mbox.pool_cnt++;
-	return 0;
+    if(mbox.pool_cnt>=mbox.pool_size) return 1;
+    unsigned offset = mbox.pool_cnt*4096;
+    *vAddr = (void*)(((unsigned)mbox.virt_addr) + offset);
+    *pAddr = (void*)(((unsigned)mbox.bus_addr) + offset);
+    //printf("getRealMemoryPageFromPool bus_addr=%x virt_addr=%x\n", (unsigned)*pAddr,(unsigned)*vAddr);
+    mbox.pool_cnt++;
+    return 0;
 }
 
 void deallocMemPool()
 {
-	if(mbox.virt_addr) //it will be 0 by default as in .bss
-	{
-	    unmapmem(mbox.virt_addr, mbox.pool_size*4096);
-	    mem_unlock(mbox.handle, mbox.mem_ref);
-	    mem_free(mbox.handle, mbox.mem_ref);	
-	}
+    if(mbox.virt_addr) //it will be 0 by default as in .bss
+    {
+        unmapmem(mbox.virt_addr, mbox.pool_size*4096);
+        mem_unlock(mbox.handle, mbox.mem_ref);
+        mem_free(mbox.handle, mbox.mem_ref);
+    }
 }
 
 void txon()
@@ -628,8 +624,19 @@ void wspr(const char* call, const char* l_pre, const char* dbm, unsigned char* s
    unsigned long n2=(ng<<7)|(p+64+nadd);
 
    // pack n1,n2,zero-tail into 50 bits
-   char packed[11] = {n1>>20, n1>>12, n1>>4, ((n1&0x0f)<<4)|((n2>>18)&0x0f),
-n2>>10, n2>>2, (n2&0x03)<<6, 0, 0, 0, 0};
+   char packed[11] = {
+     static_cast<char>(n1>>20),
+     static_cast<char>(n1>>12),
+     static_cast<char>(n1>>4),
+     static_cast<char>(((n1&0x0f)<<4)|((n2>>18)&0x0f)),
+     static_cast<char>(n2>>10),
+     static_cast<char>(n2>>2),
+     static_cast<char>((n2&0x03)<<6),
+     0,
+     0,
+     0,
+     0
+   };
 
    // convolutional encoding K=32, r=1/2, Layland-Lushbaugh polynomials
    int k = 0;
@@ -1069,7 +1076,7 @@ int main(const int argc, char * const argv[]) {
   int mem_fd;
   char *gpio_mem, *gpio_map;
   volatile unsigned *gpio = NULL;
-  
+
   setup_io(mem_fd,gpio_mem,gpio_map,gpio);
   setup_gpios(gpio);
   allof7e = (unsigned *)mmap(
@@ -1103,7 +1110,7 @@ int main(const int argc, char * const argv[]) {
     cout << "Press CTRL-C to exit!" << endl;
 
     txon();
-    int bufPtr=0; 
+    int bufPtr=0;
     vector <double> dma_table_freq;
     // Set to non-zero value to ensure setupDMATab is called at least once.
     double ppm_prev=123456;

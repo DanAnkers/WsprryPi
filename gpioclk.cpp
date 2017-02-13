@@ -49,17 +49,13 @@ using namespace std;
 #define F_XTAL     (19200000.0)
 #define F_PLLD_CLK (500000000.0)
 
-//Now we autodetect it via makefile.
+// Choose proper base address depending on RPI1/RPI2 setting from makefile.
 #ifdef RPI2
-
 #define BCM2708_PERI_BASE 0x3f000000
 #pragma message "Raspberry Pi 2 detected."
-
 #else
-
 #define BCM2708_PERI_BASE 0x20000000
 #pragma message "Raspberry Pi 1 detected."
-
 #endif
 
 #define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
