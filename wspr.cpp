@@ -18,7 +18,8 @@ License:
 
 */
 
-//ha7ilm: added RPi2 support based on a patch to PiFmRds by Cristophe Jacquet and Richard Hirst: http://git.io/vn7O9
+// ha7ilm: added RPi2 support based on a patch to PiFmRds by Cristophe
+// Jacquet and Richard Hirst: http://git.io/vn7O9
 
 #include <stdio.h>
 #include <string.h>
@@ -89,21 +90,20 @@ volatile unsigned *allof7e = NULL;
 
 // GPIO setup macros. Always use INP_GPIO(x) before using OUT_GPIO(x) or SET_GPIO_ALT(x,y)
 #define INP_GPIO(g) *(gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
-#define OUT_GPIO(g) *(gpio+((g)/10)) |=  (1<<(((g)%10)*3))
-#define SET_GPIO_ALT(g,a) *(gpio+(((g)/10))) |= (((a)<=3?(a)+4:(a)==4?3:2)<<(((g)%10)*3))
+//#define OUT_GPIO(g) *(gpio+((g)/10)) |=  (1<<(((g)%10)*3))
+//#define SET_GPIO_ALT(g,a) *(gpio+(((g)/10))) |= (((a)<=3?(a)+4:(a)==4?3:2)<<(((g)%10)*3))
 
-#define GPIO_SET *(gpio+7)  // sets   bits which are 1 ignores bits which are 0
-#define GPIO_CLR *(gpio+10) // clears bits which are 1 ignores bits which are 0
-#define GPIO_GET *(gpio+13) // sets   bits which are 1 ignores bits which are 0
+//#define GPIO_SET *(gpio+7)  // sets   bits which are 1 ignores bits which are 0
+//#define GPIO_CLR *(gpio+10) // clears bits which are 1 ignores bits which are 0
+//#define GPIO_GET *(gpio+13) // sets   bits which are 1 ignores bits which are 0
 
 #define ACCESS(base) *(volatile int*)((long int)allof7e+base-0x7e000000)
 #define SETBIT(base, bit) ACCESS(base) |= 1<<bit
 #define CLRBIT(base, bit) ACCESS(base) &= ~(1<<bit)
 
-#define GPIO_VIRT_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
-#define DMA_VIRT_BASE                  (BCM2708_PERI_BASE + 0x7000)
+#define GPIO_VIRT_BASE (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
+#define DMA_VIRT_BASE  (BCM2708_PERI_BASE + 0x7000)
 
-//it was GPFSEL0 before:
 #define GPIO_PHYS_BASE (0x7E200000)
 #define CM_GP0CTL (0x7e101070)
 #define CM_GP0DIV (0x7e101074)
@@ -112,9 +112,7 @@ volatile unsigned *allof7e = NULL;
 #define DMA_PHYS_BASE (0x7E007000)
 #define PWM_PHYS_BASE  (0x7e20C000) /* PWM controller */
 
-
-
-
+#define BUS_TO_PHYS(x) ((x)&~0xC0000000)
 
 typedef enum {WSPR,TONE} mode_type;
 
@@ -158,51 +156,14 @@ struct PageInfo {
     void* v;   // virtual address
 };
 
-//struct PageInfo constPage;
-//struct PageInfo instrPage;
-//struct PageInfo instrs[1024];
-
 static struct {
-    int handle;        /* From mbox_open() */
-    unsigned mem_ref;    /* From mem_alloc() */
-    unsigned bus_addr;    /* From mem_lock() */
-    unsigned char *virt_addr;    /* From mapmem() */ //ha7ilm: originally uint8_t
+    int handle;               /* From mbox_open() */
+    unsigned mem_ref;         /* From mem_alloc() */
+    unsigned bus_addr;        /* From mem_lock() */
+    unsigned char *virt_addr; /* From mapmem() */ //ha7ilm: originally uint8_t
     unsigned pool_size;
     unsigned pool_cnt;
 } mbox;
-
-#define BUS_TO_PHYS(x) ((x)&~0xC0000000)
-
-#if 0
-// Get the physical address of a page of virtual memory
-void getRealMemPage(void** vAddr, void** pAddr) {
-    //void* a = (void*)valloc(4096); //ha7ilm: allocates aligned memory
-    //((int*)a)[0] = 1;  // use page to force allocation. //ha7ilm: just writes something into it to force allocation flag
-    //mlock(a, 4096);  // lock into ram.
-    //*vAddr = a;  // yay - we know the virtual address
-
-    //unsigned long long frameinfo;
-
-    //int fp = open("/proc/self/pagemap", 'r');
-    //lseek(fp, ((long int)a)/4096*8, SEEK_SET);
-    //read(fp, &frameinfo, sizeof(frameinfo));
-
-    //*pAddr = (void*)((long int)(frameinfo*4096));
-
-    //ha7ilm: should open mbox first!
-    mbox.mem_ref=mem_alloc(mbox.handle, 4096, 4096, MEM_FLAG);
-    mbox.bus_addr = mem_lock(mbox.handle, mbox.mem_ref);
-    mbox.virt_addr = (unsigned char*)mapmem(BUS_TO_PHYS(mbox.bus_addr), 4096);
-    printf("mbox bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,(unsigned)mbox.virt_addr,mbox.mem_ref);
-    *pAddr = (void*)mbox.bus_addr;
-    *vAddr = mbox.virt_addr;
-}
-
-void freeRealMemPage(void* vAddr) {
-    //munlock(vAddr, 4096);  // unlock ram.
-    //free(vAddr);
-}
-#endif
 
 void allocMemPool(unsigned numpages)
 {
@@ -214,15 +175,17 @@ void allocMemPool(unsigned numpages)
     //printf("allocMemoryPool bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,(unsigned)mbox.virt_addr,mbox.mem_ref);
 }
 
-int getRealMemPageFromPool(void ** vAddr, void **pAddr)
+void getRealMemPageFromPool(void ** vAddr, void **pAddr)
 {
-    if(mbox.pool_cnt>=mbox.pool_size) return 1;
+    if (mbox.pool_cnt>=mbox.pool_size) {
+      cerr << "Error: unable to allocated more pages!" << endl;
+      ABORT(-1);
+    }
     unsigned offset = mbox.pool_cnt*4096;
     *vAddr = (void*)(((unsigned)mbox.virt_addr) + offset);
     *pAddr = (void*)(((unsigned)mbox.bus_addr) + offset);
     //printf("getRealMemoryPageFromPool bus_addr=%x virt_addr=%x\n", (unsigned)*pAddr,(unsigned)*vAddr);
     mbox.pool_cnt++;
-    return 0;
 }
 
 void deallocMemPool()
@@ -338,7 +301,7 @@ void txSym(
 }
 
 void unSetupDMA(){
-    printf("exiting\n");
+    //cout << "Exiting!" << endl;
     struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS(DMA_PHYS_BASE));
     DMA0->CS =1<<31;  // reset dma controller
     txoff();
@@ -506,16 +469,16 @@ void setup_io(
 ) {
     /* open /dev/mem */
     if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
-        printf("can't open /dev/mem \n");
-        exit (-1);
+        cerr << "Error: can't open /dev/mem" << endl;
+        ABORT (-1);
     }
 
     /* mmap GPIO */
 
     // Allocate MAP block
     if ((gpio_mem = (char *)malloc(BLOCK_SIZE + (PAGE_SIZE-1))) == NULL) {
-        printf("allocation error \n");
-        exit (-1);
+        cerr << "Error: allocation error" << endl;
+        ABORT (-1);
     }
 
     // Make sure pointer is on 4K boundary
@@ -533,13 +496,12 @@ void setup_io(
                );
 
     if ((long)gpio_map < 0) {
-        printf("mmap error %ld\n", (long int)gpio_map);
-        exit (-1);
+        cerr << "mmap error" << (long int)gpio_map << endl;
+        ABORT (-1);
     }
 
     // Always use volatile pointer!
     gpio = (volatile unsigned *)gpio_map;
-
 
 }
 
@@ -1028,13 +990,18 @@ void timeval_print(struct timeval *tv) {
     printf("%s.%03ld", buffer, (tv->tv_usec+500)/1000);
 }
 
-int open_mbox()
+void open_mbox()
 {
     unlink(DEVICE_FILE_NAME);
-    if (mknod(DEVICE_FILE_NAME, S_IFCHR|0600, makedev(100, 0)) < 0) { printf("Failed to create mailbox device.\n"); return 1; }
+    if (mknod(DEVICE_FILE_NAME, S_IFCHR|0600, makedev(100, 0)) < 0) {
+      cerr << "Failed to create mailbox device." << endl;
+      ABORT(-1);
+    }
     mbox.handle = mbox_open();
-    if (mbox.handle < 0) { printf("Failed to open mailbox.\n"); return 1; }
-    return 0;
+    if (mbox.handle < 0) {
+      cerr << "Failed to open mailbox." << endl;
+      ABORT(-1);
+    }
 }
 
 int main(const int argc, char * const argv[]) {
@@ -1091,7 +1058,7 @@ int main(const int argc, char * const argv[]) {
     cerr << "Error: mmap error!" << endl;
     ABORT(-1);
   }
-  if (open_mbox()) return 1;
+  open_mbox();
   txon();
   struct PageInfo constPage;
   struct PageInfo instrPage;
@@ -1155,7 +1122,7 @@ int main(const int argc, char * const argv[]) {
     printf("\n");
     */
 
-    printf("Ready to transmit (setup complete)...\n");
+    cout << "Ready to transmit (setup complete)..." << endl;
     int band=0;
     int n_tx=0;
     for(;;) {
@@ -1184,7 +1151,7 @@ int main(const int argc, char * const argv[]) {
       if (no_delay) {
         cout << "  Transmitting immediately (not waiting for WSPR window)" << endl;
       } else {
-        printf("  Waiting for next WSPR transmission window...\n");
+        cout << "  Waiting for next WSPR transmission window..." << endl;
         wait_every((wspr15) ? 15 : 2);
       }
 

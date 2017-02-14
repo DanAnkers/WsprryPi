@@ -4,7 +4,7 @@ Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO
 port to Antenna (and LPF), operates on LF, MF, HF and VHF bands from
 0 to 250 MHz.
 
-It is now compatible with both the original Raspberry Pi and the Raspberry Pi 2.
+Compatible with the original Raspberry Pi and the Raspberry Pi 2/3.
 
 ******
 Installation / update:
@@ -36,7 +36,8 @@ Usage: (WSPR --help output):
     -p --ppm ppm
       Known PPM correction to 19.2MHz RPi nominal crystal frequency.
     -s --self-calibration
-      Call ntp_adjtime() before every transmission to obtain the PPM error of the xtal.
+      Call ntp_adjtime() before every transmission to obtain the PPM error
+      of the xtal.
     -r --repeat
       Repeatedly, and in order, transmit on all the specified freqs.
     -x --terminate <n>
@@ -59,7 +60,7 @@ Usage: (WSPR --help output):
   <B>-15 indicates the WSPR-15 region of band <B>.
 
   Transmission gaps can be created by specifying a TX frequency of 0
-  
+
   Note that 'callsign', 'locator', and 'tx_power_dBm' are simply used to fill
   in the appropriate fields of the WSPR message. Normally, tx_power_dBm should
   be 10, representing the signal power coming out of the Pi. Set this value
@@ -171,7 +172,7 @@ Example usage:
     sudo ./wspr --self-calibration N9NNN EM10 33 20m
 
   Transmit a WSPR transmission slightly off-center on 30m every 10 minutes for
-  a total of 7 transmissions, and using a fixed PPM correction value.  sudo
+  a total of 7 transmissions, and using a fixed PPM correction value.
     sudo ./wspr --repeat --terminate 7 --ppm 43.17 N9NNN EM10 33 10140210 0 0 0 0
 
   Transmit repeatedly on 40m, use NTP based frequency offset calibration,
@@ -212,6 +213,8 @@ Credits:
 
   Michael Tatarinov for adding a patch to get PPM info directly from the
   kernel.
+
+  Retzler András (HA7ILM) added support for the RPi2/3.
 
   [1] PiFM code from
       http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
