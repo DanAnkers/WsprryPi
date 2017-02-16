@@ -5,10 +5,10 @@ pi_version_flag = $(if $(call archis,armv7,dummy-text),-DRPI2,-DRPI1)
 
 all: wspr gpioclk
 
-mailbox.o:
+mailbox.o: mailbox.c mailbox.h
 	g++ -c -Wall -lm mailbox.c
 
-wspr: mailbox.o wspr.cpp
+wspr: mailbox.o wspr.cpp mailbox.h
 	g++ -Wall -lm $(pi_version_flag) mailbox.o wspr.cpp -owspr
 
 gpioclk: gpioclk.cpp

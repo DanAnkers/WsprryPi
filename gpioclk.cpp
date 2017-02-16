@@ -52,7 +52,7 @@ using namespace std;
 // Choose proper base address depending on RPI1/RPI2 setting from makefile.
 #ifdef RPI2
 #define BCM2708_PERI_BASE 0x3f000000
-#pragma message "Raspberry Pi 2 detected."
+#pragma message "Raspberry Pi 2/3 detected."
 #else
 #define BCM2708_PERI_BASE 0x20000000
 #pragma message "Raspberry Pi 1 detected."

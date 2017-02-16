@@ -74,7 +74,7 @@ using namespace std;
 #ifdef RPI2
 #define BCM2708_PERI_BASE 0x3f000000
 #define MEM_FLAG 0x04
-#pragma message "Raspberry Pi 2 detected."
+#pragma message "Raspberry Pi 2/3 detected."
 #else
 #define BCM2708_PERI_BASE 0x20000000
 #define MEM_FLAG 0x0c
@@ -670,7 +670,8 @@ void print_usage() {
   cout << "  -p --ppm ppm" << endl;
   cout << "    Known PPM correction to 19.2MHz RPi nominal crystal frequency." << endl;
   cout << "  -s --self-calibration" << endl;
-  cout << "    Call ntp_adjtime() before every transmission to obtain the PPM error of the crystal." << endl;
+  cout << "    Call ntp_adjtime() before every transmission to obtain the PPM error of the" << endl;
+  cout << "    crystal." << endl;
   cout << "  -r --repeat" << endl;
   cout << "    Repeatedly, and in order, transmit on all the specified command line freqs." << endl;
   cout << "  -x --terminate <n>" << endl;
@@ -680,7 +681,7 @@ void print_usage() {
   cout << "      +/- " << WSPR_RAND_OFFSET << " Hz for WSPR" << endl;
   cout << "      +/- " << WSPR15_RAND_OFFSET << " Hz for WSPR-15" << endl;
   cout << "  -t --test-tone freq" << endl;
-  cout << "    Simply output a test tone and the specified frequency. Only used" << endl;
+  cout << "    Simply output a test tone at the specified frequency. Only used" << endl;
   cout << "    for debugging and to verify calibration." << endl;
   cout << "  -n --no-delay" << endl;
   cout << "    Transmit immediately, do not wait for a WSPR TX window. Used" << endl;
@@ -911,7 +912,8 @@ void parse_commandline(
     cout << temp.str();
     temp.str("");
     if (self_cal) {
-      temp << "  ntp_adjtime() will be used to peridocially calibrate the transmission frequency" << endl;
+      temp << "  ntp_adjtime() will be used to peridocially calibrate the transmission" << endl;
+      temp << "    frequency" << endl;
     } else if (ppm) {
       temp << "  PPM value to be used for all transmissions: " << ppm << endl;
     }
@@ -1004,7 +1006,14 @@ void open_mbox()
     }
 }
 
+void unlinkmbox() {
+  unlink(DEVICE_FILE_NAME);
+  unlink(LOCAL_DEVICE_FILE_NAME);
+};
+
 int main(const int argc, char * const argv[]) {
+  atexit(unlinkmbox);
+
   // Initialize the RNG
   srand(time(NULL));
 

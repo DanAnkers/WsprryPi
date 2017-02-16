@@ -247,7 +247,7 @@ int mbox_open() {
     // Open a char device file used for communicating with kernel mbox driver.
     file_desc = open(DEVICE_FILE_NAME, 0);
     if(file_desc >= 0) {
-        printf("Using mbox device " DEVICE_FILE_NAME ".\n");
+        //printf("Using mbox device " DEVICE_FILE_NAME ".\n");
         return file_desc;
     }
     
@@ -255,14 +255,14 @@ int mbox_open() {
     unlink(LOCAL_DEVICE_FILE_NAME);
     if(mknod(LOCAL_DEVICE_FILE_NAME, S_IFCHR|0600, makedev(MAJOR_NUM_A, 0)) >= 0 &&
         (file_desc = open(LOCAL_DEVICE_FILE_NAME, 0)) >= 0) {
-        printf("Using local mbox device file with major %d.\n", MAJOR_NUM_A);
+        //printf("Using local mbox device file with major %d.\n", MAJOR_NUM_A);
         return file_desc;
     }
 
     unlink(LOCAL_DEVICE_FILE_NAME);
     if(mknod(LOCAL_DEVICE_FILE_NAME, S_IFCHR|0600, makedev(MAJOR_NUM_B, 0)) >= 0 &&
         (file_desc = open(LOCAL_DEVICE_FILE_NAME, 0)) >= 0) {
-        printf("Using local mbox device file with major %d.\n", MAJOR_NUM_B);
+        //printf("Using local mbox device file with major %d.\n", MAJOR_NUM_B);
         return file_desc;
     }
 
