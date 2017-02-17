@@ -56,7 +56,12 @@ using namespace std;
 // There seems to be a 2.5ppm offset between the NTP measured frequency
 // error and the frequency error measured by a frequency counter. This fixed
 // PPM offset is compensated for here.
+// This PPM correction is not needed for RPI2/3.
+#ifdef RPI2
+#define F_PLLD_CLK   (500000000.0*(1-0.000e-6))
+#else
 #define F_PLLD_CLK   (500000000.0*(1-2.500e-6))
+#endif
 // Empirical value for F_PWM_CLK that produces WSPR symbols that are 'close' to
 // 0.682s long. For some reason, despite the use of DMA, the load on the PI
 // affects the TX length of the symbols. However, the varying symbol length is
