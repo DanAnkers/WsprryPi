@@ -36,10 +36,11 @@ Usage: (WSPR --help output):
     -p --ppm ppm
       Known PPM correction to 19.2MHz RPi nominal crystal frequency.
     -s --self-calibration
-      Call ntp_adjtime() before every transmission to obtain the PPM error
-      of the xtal.
+      Call ntp_adjtime() before every transmission to obtain the PPM error of
+      the crystal.
     -r --repeat
-      Repeatedly, and in order, transmit on all the specified freqs.
+      Repeatedly, and in order, transmit on all the specified command line
+      freqs.
     -x --terminate <n>
       Terminate after n transmissions have been completed.
     -o --offset
@@ -47,7 +48,7 @@ Usage: (WSPR --help output):
         +/- 80 Hz for WSPR
         +/- 8 Hz for WSPR-15
     -t --test-tone freq
-      Simply output a test tone and the specified frequency. Only used
+      Simply output a test tone at the specified frequency. Only used
       for debugging and to verify calibration.
     -n --no-delay
       Transmit immediately, do not wait for a WSPR TX window. Used
