@@ -204,15 +204,16 @@ struct DMAregs {
 };
 
 struct PageInfo {
-    void* p;  // physical address
-    void* v;   // virtual address
+    void* b;  // bus address
+    void* v;  // virtual address
 };
 
+// Must be global so that exit handlers can access this.
 static struct {
-    int handle;               /* From mbox_open() */
-    unsigned mem_ref;         /* From mem_alloc() */
-    unsigned bus_addr;        /* From mem_lock() */
-    unsigned char *virt_addr; /* From mapmem() */ //ha7ilm: originally uint8_t
+    int handle;                      /* From mbox_open() */
+    unsigned mem_ref = 0;            /* From mem_alloc() */
+    unsigned bus_addr;               /* From mem_lock() */
+    unsigned char *virt_addr = NULL; /* From mapmem() */ //ha7ilm: originally uint8_t
     unsigned pool_size;
     unsigned pool_cnt;
 } mbox;
@@ -227,7 +228,9 @@ void allocMemPool(unsigned numpages)
     //printf("allocMemoryPool bus_addr=%x virt_addr=%x mem_ref=%x\n",mbox.bus_addr,(unsigned)mbox.virt_addr,mbox.mem_ref);
 }
 
-void getRealMemPageFromPool(void ** vAddr, void **pAddr)
+// Returns the virtual and bus address (NOT physical address!) of another
+// page in the pool.
+void getRealMemPageFromPool(void ** vAddr, void **bAddr)
 {
     if (mbox.pool_cnt>=mbox.pool_size) {
       std::cerr << "Error: unable to allocated more pages!" << std::endl;
@@ -235,45 +238,81 @@ void getRealMemPageFromPool(void ** vAddr, void **pAddr)
     }
     unsigned offset = mbox.pool_cnt*4096;
     *vAddr = (void*)(((unsigned)mbox.virt_addr) + offset);
-    *pAddr = (void*)(((unsigned)mbox.bus_addr) + offset);
+    *bAddr = (void*)(((unsigned)mbox.bus_addr) + offset);
     //printf("getRealMemoryPageFromPool bus_addr=%x virt_addr=%x\n", (unsigned)*pAddr,(unsigned)*vAddr);
     mbox.pool_cnt++;
 }
 
 void deallocMemPool()
 {
-    if(mbox.virt_addr) //it will be 0 by default as in .bss
-    {
+    if(mbox.virt_addr!=NULL) {
         unmapmem(mbox.virt_addr, mbox.pool_size*4096);
+    }
+    if (mbox.mem_ref!=0) {
         mem_unlock(mbox.handle, mbox.mem_ref);
         mem_free(mbox.handle, mbox.mem_ref);
     }
 }
 
+void disable_clock() {
+  // Disable the clock (in case it's already running) by reading current
+  // settings and only clearing the enable bit.
+  auto settings=ACCESS_BUS_ADDR(CM_GP0CTL_BUS);
+  // Clear enable bit and add password
+  settings=(settings&0x7EF)|0x5A000000;
+  // Disable
+  ACCESS_BUS_ADDR(CM_GP0CTL_BUS) = *((int*)&settings);
+  // Wait for clock to not be busy.
+  while (true) {
+    if (!(ACCESS_BUS_ADDR(CM_GP0CTL_BUS)&(1<<7))) {
+      break;
+    }
+  }
+}
+
 void txon()
 {
-    SETBIT_BUS_ADDR(GPIO_BUS_BASE , 14);
-    CLRBIT_BUS_ADDR(GPIO_BUS_BASE , 13);
-    CLRBIT_BUS_ADDR(GPIO_BUS_BASE , 12);
+  // Set function select for GPIO4.
+  // Fsel 000 => input
+  // Fsel 001 => output
+  // Fsel 100 => alternate function 0
+  // Fsel 101 => alternate function 1
+  // Fsel 110 => alternate function 2
+  // Fsel 111 => alternate function 3
+  // Fsel 011 => alternate function 4
+  // Fsel 010 => alternate function 5
+  // Function select for GPIO is configured as 'b100 which selects
+  // alternate function 0 for GPIO4. Alternate function 0 is GPCLK0.
+  // See section 6.2 of Arm Peripherals Manual.
+  SETBIT_BUS_ADDR(GPIO_BUS_BASE , 14);
+  CLRBIT_BUS_ADDR(GPIO_BUS_BASE , 13);
+  CLRBIT_BUS_ADDR(GPIO_BUS_BASE , 12);
 
-    // Set GPIO drive strength, more info: http://www.scribd.com/doc/101830961/GPIO-Pads-Control2
-    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 0;  //2mA -3.4dBm
-    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 1;  //4mA +2.1dBm
-    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 2;  //6mA +4.9dBm
-    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 3;  //8mA +6.6dBm(default)
-    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 4;  //10mA +8.2dBm
-    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 5;  //12mA +9.2dBm
-    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 6;  //14mA +10.0dBm
-    ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 7;  //16mA +10.6dBm
+  // Set GPIO drive strength, more info: http://www.scribd.com/doc/101830961/GPIO-Pads-Control2
+  //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 0;  //2mA -3.4dBm
+  //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 1;  //4mA +2.1dBm
+  //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 2;  //6mA +4.9dBm
+  //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 3;  //8mA +6.6dBm(default)
+  //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 4;  //10mA +8.2dBm
+  //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 5;  //12mA +9.2dBm
+  //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 6;  //14mA +10.0dBm
+  ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 7;  //16mA +10.6dBm
 
-    struct GPCTL setupword = {6/*SRC*/, 1, 0, 0, 0, 3,0x5a};
-    ACCESS_BUS_ADDR(CM_GP0CTL_BUS) = *((int*)&setupword);
+  disable_clock();
+
+  // Set clock source as PLLD.
+  struct GPCTL setupword = {6/*SRC*/, 0, 0, 0, 0, 3,0x5a};
+
+  // Enable clock.
+  setupword = {6/*SRC*/, 1, 0, 0, 0, 3,0x5a};
+  ACCESS_BUS_ADDR(CM_GP0CTL_BUS) = *((int*)&setupword);
 }
 
 void txoff()
 {
-    struct GPCTL setupword = {6/*SRC*/, 0, 0, 0, 0, 1,0x5a};
-    ACCESS_BUS_ADDR(CM_GP0CTL_BUS) = *((int*)&setupword);
+  //struct GPCTL setupword = {6/*SRC*/, 0, 0, 0, 0, 1,0x5a};
+  //ACCESS_BUS_ADDR(CM_GP0CTL_BUS) = *((int*)&setupword);
+  disable_clock();
 }
 
 // Transmit symbol sym for tsym seconds.
@@ -327,29 +366,29 @@ void txSym(
     // Configure the transmission for this iteration
     // Set GPIO pin to transmit f0
     bufPtr++;
-    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
-    ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.p + f0_idx*4;
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].b)) usleep(100);
+    ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.b + f0_idx*4;
 
     // Wait for n_f0 PWM clocks
     bufPtr++;
-    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].b)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = n_f0;
 
     // Set GPIO pin to transmit f1
     bufPtr++;
-    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
-    ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.p + f1_idx*4;
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].b)) usleep(100);
+    ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.b + f1_idx*4;
 
     // Wait for n_f1 PWM clocks
     bufPtr=(bufPtr+1) % (1024);
-    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].b)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = n_f1;
 
     // Update counters
     n_pwmclk_transmitted+=n_pwmclk;
     n_f0_transmitted+=n_f0;
   }
-  //printf("<instrs[bufPtr]=%x %x>",(unsigned)instrs[bufPtr].v,(unsigned)instrs[bufPtr].p);
+  //printf("<instrs[bufPtr]=%x %x>",(unsigned)instrs[bufPtr].v,(unsigned)instrs[bufPtr].b);
 }
 
 void unSetupDMA(){
@@ -427,17 +466,10 @@ void setupDMA(
   struct PageInfo & instrPage,
   struct PageInfo instrs[]
 ){
-   atexit(unSetupDMA);
-   atexit(deallocMemPool);
-   signal (SIGINT, handSig);
-   signal (SIGTERM, handSig);
-   signal (SIGHUP, handSig);
-   signal (SIGQUIT, handSig);
-
    allocMemPool(1025);
 
    // Allocate a page of ram for the constants
-   getRealMemPageFromPool(&constPage.v, &constPage.p);
+   getRealMemPageFromPool(&constPage.v, &constPage.b);
 
    // Create 1024 instructions allocating one page at a time.
    // Even instructions target the GP0 Clock divider
@@ -445,7 +477,7 @@ void setupDMA(
    int instrCnt = 0;
    while (instrCnt<1024) {
      // Allocate a page of ram for the instructions
-     getRealMemPageFromPool(&instrPage.v, &instrPage.p);
+     getRealMemPageFromPool(&instrPage.v, &instrPage.b);
 
      // make copy instructions
      // Only create as many instructions as will fit in the recently
@@ -455,12 +487,12 @@ void setupDMA(
      int i;
      for (i=0; i<(signed)(4096/sizeof(struct CB)); i++) {
        instrs[instrCnt].v = (void*)((long int)instrPage.v + sizeof(struct CB)*i);
-       instrs[instrCnt].p = (void*)((long int)instrPage.p + sizeof(struct CB)*i);
-       instr0->SOURCE_AD = (unsigned long int)constPage.p+2048;
+       instrs[instrCnt].b = (void*)((long int)instrPage.b + sizeof(struct CB)*i);
+       instr0->SOURCE_AD = (unsigned long int)constPage.b+2048;
        instr0->DEST_AD = PWM_BUS_BASE+0x18 /* FIF1 */;
        instr0->TXFR_LEN = 4;
        instr0->STRIDE = 0;
-       //instr0->NEXTCONBK = (int)instrPage.p + sizeof(struct CB)*(i+1);
+       //instr0->NEXTCONBK = (int)instrPage.b + sizeof(struct CB)*(i+1);
        instr0->TI = (1/* DREQ  */<<6) | (5 /* PWM */<<16) |  (1<<26/* no wide*/) ;
        instr0->RES1 = 0;
        instr0->RES2 = 0;
@@ -472,13 +504,13 @@ void setupDMA(
          instr0->TI = (1<<26/* no wide*/) ;
        }
 
-       if (instrCnt!=0) ((struct CB*)(instrs[instrCnt-1].v))->NEXTCONBK = (long int)instrs[instrCnt].p;
+       if (instrCnt!=0) ((struct CB*)(instrs[instrCnt-1].v))->NEXTCONBK = (long int)instrs[instrCnt].b;
        instr0++;
        instrCnt++;
      }
    }
    // Create a circular linked list of instructions
-   ((struct CB*)(instrs[1023].v))->NEXTCONBK = (long int)instrs[0].p;
+   ((struct CB*)(instrs[1023].v))->NEXTCONBK = (long int)instrs[0].b;
 
    // set up a clock for the PWM
    ACCESS_BUS_ADDR(CLK_BUS_BASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000026;  // Source=PLLD and disable
@@ -505,83 +537,11 @@ void setupDMA(
    DMA0->CS =1<<31;  // reset
    DMA0->CONBLK_AD=0;
    DMA0->TI=0;
-   DMA0->CONBLK_AD = (unsigned long int)(instrPage.p);
+   DMA0->CONBLK_AD = (unsigned long int)(instrPage.b);
    DMA0->CS =(1<<0)|(255 <<16);  // enable bit = 0, clear end flag = 1, prio=19-16
 }
 
-
-//
-// Set up memory regions to access GPIO
-//
-void setup_io(
-  int & mem_fd
-  //char * & gpio_mem,
-  //char * & gpio_map,
-  //volatile unsigned * & gpio
-) {
-    /* open /dev/mem */
-    if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
-        std::cerr << "Error: can't open /dev/mem" << std::endl;
-        ABORT (-1);
-    }
-
-    /* mmap GPIO */
-
-    // Allocate MAP block
-    //if ((gpio_mem = (char *)malloc(BLOCK_SIZE + (PAGE_SIZE-1))) == NULL) {
-    //    std::cerr << "Error: allocation error" << std::endl;
-    //    ABORT (-1);
-    //}
-
-    // Make sure pointer is on 4K boundary
-    //if ((unsigned long)gpio_mem % PAGE_SIZE)
-    //    gpio_mem += PAGE_SIZE - ((unsigned long)gpio_mem % PAGE_SIZE);
-
-    // Now map it
-    //gpio_map = (char *)mmap(
-    //               gpio_mem,
-    //               BLOCK_SIZE,
-    //               PROT_READ|PROT_WRITE,
-    //               MAP_SHARED|MAP_FIXED,
-    //               mem_fd,
-    //               GPIO_VIRT_BASE
-    //           );
-
-    //if ((long)gpio_map < 0) {
-    //    std::cerr << "Error: mmap error" << (long int)gpio_map << std::endl;
-    //    ABORT (-1);
-    //}
-
-    // Always use volatile pointer!
-    //gpio = (volatile unsigned *)gpio_map;
-}
-
-// Not sure why this function is needed as this code only uses GPIO4 and
-// this function sets gpio 7 through 11 as input...
-#if 0
-void setup_gpios(
-  volatile unsigned * & gpio
-){
-   int g;
-   // Switch GPIO 7..11 to output mode
-
-    /************************************************************************\
-     * You are about to change the GPIO settings of your computer.          *
-     * Mess this up and it will stop working!                               *
-     * It might be a good idea to 'sync' before running this program        *
-     * so at least you still have your code changes written to the SD-card! *
-    \************************************************************************/
-
-    // Set GPIO pins 7-11 to output
-    for (g=7; g<=11; g++) {
-        //INP_GPIO(g); // must use INP_GPIO before we can use OUT_GPIO
-        //OUT_GPIO(g);
-    }
-
-}
-#endif
-
-// Convert std::string to uppercase
+// Convert string to uppercase
 void to_upper(char *str)
 {   while(*str)
     {
@@ -1061,19 +1021,71 @@ void open_mbox() {
   }
 }
 
-void unlinkmbox() {
+void cleanup() {
+  disable_clock();
+  unSetupDMA();
+  deallocMemPool();
   unlink(DEVICE_FILE_NAME);
   unlink(LOCAL_DEVICE_FILE_NAME);
-};
+}
+
+void cleanupAndExit(int sig) {
+  cleanup();
+  printf("Exiting with error; caught signal: %i\n", sig);
+  exit(1);
+}
+
+void setSchedPriority(int priority) {
+  //In order to get the best timing at a decent queue size, we want the kernel to avoid interrupting us for long durations.
+  //This is done by giving our process a high priority. Note, must run as super-user for this to work.
+  struct sched_param sp;
+  sp.sched_priority=priority;
+  int ret = pthread_setschedparam(pthread_self(), SCHED_FIFO, &sp);
+  if (ret) {
+    printf("Warning: pthread_setschedparam (increase thread priority) returned non-zero: %i\n", ret);
+  }
+}
+
+void setup_peri_base_virt(
+  volatile unsigned * & peri_base_virt
+) {
+  int mem_fd;
+  // open /dev/mem
+  if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
+    std::cerr << "Error: can't open /dev/mem" << std::endl;
+    ABORT (-1);
+  }
+  peri_base_virt = (unsigned *)mmap(
+              NULL,
+              0x002FFFFF,  //len
+              PROT_READ|PROT_WRITE,
+              MAP_SHARED,
+              mem_fd,
+              PERI_BASE_PHYS  //base
+          );
+  if ((long int)peri_base_virt==-1) {
+    std::cerr << "Error: mmap error!" << std::endl;
+    ABORT(-1);
+  }
+  close(mem_fd);
+}
 
 int main(const int argc, char * const argv[]) {
+  //catch all signals (like ctrl+c, ctrl+z, ...) to ensure DMA is disabled
+  for (int i = 0; i < 64; i++) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = cleanupAndExit;
+    sigaction(i, &sa, NULL);
+  }
+  atexit(cleanup);
+  setSchedPriority(30);
+
 #ifdef RPI1
   std::cout << "Detected Raspberry Pi version 1" << std::endl;
 #else
   std::cout << "Detected Raspberry Pi version 2/3" << std::endl;
 #endif
-
-  atexit(unlinkmbox);
 
   // Initialize the RNG
   srand(time(NULL));
@@ -1110,24 +1122,8 @@ int main(const int argc, char * const argv[]) {
   int nbands=center_freq_set.size();
 
   // Initial configuration
-  int mem_fd;
-  //char *gpio_mem, *gpio_map;
-  //volatile unsigned *gpio = NULL;
-  //setup_io(mem_fd,gpio_mem,gpio_map,gpio);
-  setup_io(mem_fd);
-  //setup_gpios(gpio);
-  peri_base_virt = (unsigned *)mmap(
-              NULL,
-              0x002FFFFF,  //len
-              PROT_READ|PROT_WRITE,
-              MAP_SHARED,
-              mem_fd,
-              PERI_BASE_PHYS  //base
-          );
-  if ((long int)peri_base_virt==-1) {
-    std::cerr << "Error: mmap error!" << std::endl;
-    ABORT(-1);
-  }
+  setup_peri_base_virt(peri_base_virt);
+  // Set up DMA
   open_mbox();
   txon();
   struct PageInfo constPage;
