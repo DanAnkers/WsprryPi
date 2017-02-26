@@ -1,22 +1,19 @@
 // WSPR transmitter for the Raspberry Pi. See accompanying README and BUILD
 // files for descriptions on how to use this code.
 
-/*
-License:
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 2 of the License, or
-  (at your option) any later version.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
-
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-*/
+// License:
+//   This program is free software: you can redistribute it and/or modify
+//   it under the terms of the GNU General Public License as published by
+//   the Free Software Foundation, either version 2 of the License, or
+//   (at your option) any later version.
+//
+//   This program is distributed in the hope that it will be useful,
+//   but WITHOUT ANY WARRANTY; without even the implied warranty of
+//   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//   GNU General Public License for more details.
+//
+//   You should have received a copy of the GNU General Public License
+//   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 // ha7ilm: added RPi2 support based on a patch to PiFmRds by Cristophe
 // Jacquet and Richard Hirst: http://git.io/vn7O9
@@ -28,6 +25,8 @@ License:
 #include <ctype.h>
 #include <dirent.h>
 #include <math.h>
+#include <cmath>
+#include <cstdint>
 #include <fcntl.h>
 #include <assert.h>
 #include <sys/mman.h>
@@ -42,21 +41,71 @@ License:
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <pthread.h>
 #include <sys/timex.h>
 
 #include "mailbox.h"
+
+// Note on accessing memory in RPi
+//
+// There are 3 types of addresses in the RPi:
+// Physical addresses
+//   These are the actual address locations of the RAM and are equivalent
+//   to offsets into /dev/mem.
+//   The peripherals (DMA engine, PWM, etc.) are located at physical
+//   address 0x2000000 for RPi1 and 0x3f000000 for RPi2/3.
+// Virtual addresses
+//   These are the addresses that a program sees and can read/write to.
+//   Addresses 0x00000000 through 0xbfffffff are the addresses available
+//   to a program running in user space.
+//   Addresses 0xc0000000 and above are available only to the kernel.
+//   The peripherals start at address 0xf2000000 in virtual space but
+//   this range is only accessible by the kernel. The kernel could directly
+//   access peripherals from virtual addresses. It is not clear to me my
+//   a user space application running as 'root' does not have access to this
+//   memory range.
+// Bus addresses
+//   This is a different (virtual?) address space that also maps onto
+//   physical memory.
+//   The peripherals start at address 0x7e000000 of the bus address space.
+//   The DRAM is also available in bus address space in 4 different locations:
+//   0x00000000 "L1 and L2 cached alias"
+//   0x40000000 "L2 cache coherent (non allocating)"
+//   0x80000000 "L2 cache (only)"
+//   0xC0000000 "Direct, uncached access"
+//
+// Accessing peripherals from user space (virtual addresses):
+//   The technique used in this program is that mmap is used to map portions of
+//   /dev/mem to an arbitrary virtual address. For example, to access the
+//   GPIO's, the gpio range of addresses in /dev/mem (physical addresses) are
+//   mapped to a kernel chosen virtual address. After the mapping has been
+//   set up, writing to the kernel chosen virtual address will actually
+//   write to the GPIO addresses in physical memory.
+//
+// Accessing RAM from DMA engine
+//   The DMA enginer must use bus addresses to access memory. Thus,
+//   to use the DMA engine to move memory from one virtual address to
+//   another virtual address, one needs to first find the physical addresses
+//   that corresponds to the virtual addresses. Then, one needs to find
+//   the bus addresses that corresponds to those physical addresses. Finally,
+//   the DMA engine can be programmed. i.e. DMA engine access should use
+//   addresses starting with 0xC.
+//
+// The perhipherals in the Broadcom documentation are described using their
+// bus addresses and calculations are performed in this program to figure
+// out how to access them with virtual addresses.
 
 #define ABORT(a) exit(a)
 // Used for debugging
 #define MARK std::cout << "Currently in file: " << __FILE__ << " line: " << __LINE__ << std::endl
 
 // PLLD clock frequency.
-// There seems to be a 2.5ppm offset between the NTP measured frequency
-// error and the frequency error measured by a frequency counter. This fixed
-// PPM offset is compensated for here.
-// This PPM correction is not needed for RPI2/3.
+// For RPi1, after NTP converges, these is a 2.5 PPM difference between
+// the PPM correction reported by NTP and the actual frequency offset of
+// the crystal. This 2.5 PPM offset is not present in the RPi2 and RPi3.
+// This 2.5 PPM offset is compensated for here, but only for the RPi1.
 #ifdef RPI2
-#define F_PLLD_CLK   (500000000.0*(1-0.000e-6))
+#define F_PLLD_CLK   (500000000.0)
 #else
 #define F_PLLD_CLK   (500000000.0*(1-2.500e-6))
 #endif
@@ -74,47 +123,47 @@ License:
 #define WSPR15_RAND_OFFSET 8
 
 // Choose proper base address depending on RPI1/RPI2 setting from makefile.
+// PERI_BASE_PHYS is the base address of the peripherals, in physical
+// address space.
 #ifdef RPI2
-#define BCM2708_PERI_BASE 0x3f000000
+#define PERI_BASE_PHYS 0x3f000000
 #define MEM_FLAG 0x04
-//#pragma message "Raspberry Pi 2/3 detected."
 #else
-#define BCM2708_PERI_BASE 0x20000000
+#define PERI_BASE_PHYS 0x20000000
 #define MEM_FLAG 0x0c
-//#pragma message "Raspberry Pi 1 detected."
 #endif
 
 #define PAGE_SIZE (4*1024)
 #define BLOCK_SIZE (4*1024)
 
+// peri_base_virt is the base virtual address that a userspace program (this
+// program) can use to read/write to the the physical addresses controlling
+// the peripherals.
 // This must be declared global so that it can be called by the atexit
 // function.
-volatile unsigned *allof7e = NULL;
+volatile unsigned *peri_base_virt = NULL;
 
-// GPIO setup macros. Always use INP_GPIO(x) before using OUT_GPIO(x) or SET_GPIO_ALT(x,y)
-#define INP_GPIO(g) *(gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
-//#define OUT_GPIO(g) *(gpio+((g)/10)) |=  (1<<(((g)%10)*3))
-//#define SET_GPIO_ALT(g,a) *(gpio+(((g)/10))) |= (((a)<=3?(a)+4:(a)==4?3:2)<<(((g)%10)*3))
+// Given an address in the bus address space of the peripherals, this
+// macro calculates the appropriate virtual address to use to access
+// the requested bus address space. It does this by first subtracting
+// 0x7e000000 from the supplied bus address to calculate the offset into
+// the peripheral address space. Then, this offset is added to peri_base_virt
+// Which is the base address of the peripherals, in virtual address space.
+#define ACCESS_BUS_ADDR(buss_addr) *(volatile int*)((long int)peri_base_virt+(buss_addr)-0x7e000000)
+// Given a bus address in the peripheral address space, set or clear a bit.
+#define SETBIT_BUS_ADDR(base, bit) ACCESS_BUS_ADDR(base) |= 1<<bit
+#define CLRBIT_BUS_ADDR(base, bit) ACCESS_BUS_ADDR(base) &= ~(1<<bit)
 
-//#define GPIO_SET *(gpio+7)  // sets   bits which are 1 ignores bits which are 0
-//#define GPIO_CLR *(gpio+10) // clears bits which are 1 ignores bits which are 0
-//#define GPIO_GET *(gpio+13) // sets   bits which are 1 ignores bits which are 0
+// The following are all bus addresses.
+#define GPIO_BUS_BASE (0x7E200000)
+#define CM_GP0CTL_BUS (0x7e101070)
+#define CM_GP0DIV_BUS (0x7e101074)
+#define PADS_GPIO_0_27_BUS  (0x7e10002c)
+#define CLK_BUS_BASE (0x7E101000)
+#define DMA_BUS_BASE (0x7E007000)
+#define PWM_BUS_BASE  (0x7e20C000) /* PWM controller */
 
-#define ACCESS(base) *(volatile int*)((long int)allof7e+base-0x7e000000)
-#define SETBIT(base, bit) ACCESS(base) |= 1<<bit
-#define CLRBIT(base, bit) ACCESS(base) &= ~(1<<bit)
-
-#define GPIO_VIRT_BASE (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
-#define DMA_VIRT_BASE  (BCM2708_PERI_BASE + 0x7000)
-
-#define GPIO_PHYS_BASE (0x7E200000)
-#define CM_GP0CTL (0x7e101070)
-#define CM_GP0DIV (0x7e101074)
-#define PADS_GPIO_0_27  (0x7e10002c)
-#define CLK_PHYS_BASE (0x7E101000)
-#define DMA_PHYS_BASE (0x7E007000)
-#define PWM_PHYS_BASE  (0x7e20C000) /* PWM controller */
-
+// Convert from a bus address to a physical address.
 #define BUS_TO_PHYS(x) ((x)&~0xC0000000)
 
 typedef enum {WSPR,TONE} mode_type;
@@ -203,28 +252,28 @@ void deallocMemPool()
 
 void txon()
 {
-    SETBIT(GPIO_PHYS_BASE , 14);
-    CLRBIT(GPIO_PHYS_BASE , 13);
-    CLRBIT(GPIO_PHYS_BASE , 12);
+    SETBIT_BUS_ADDR(GPIO_BUS_BASE , 14);
+    CLRBIT_BUS_ADDR(GPIO_BUS_BASE , 13);
+    CLRBIT_BUS_ADDR(GPIO_BUS_BASE , 12);
 
     // Set GPIO drive strength, more info: http://www.scribd.com/doc/101830961/GPIO-Pads-Control2
-    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 0;  //2mA -3.4dBm
-    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 1;  //4mA +2.1dBm
-    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 2;  //6mA +4.9dBm
-    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 3;  //8mA +6.6dBm(default)
-    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 4;  //10mA +8.2dBm
-    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 5;  //12mA +9.2dBm
-    //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 6;  //14mA +10.0dBm
-    ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 7;  //16mA +10.6dBm
+    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 0;  //2mA -3.4dBm
+    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 1;  //4mA +2.1dBm
+    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 2;  //6mA +4.9dBm
+    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 3;  //8mA +6.6dBm(default)
+    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 4;  //10mA +8.2dBm
+    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 5;  //12mA +9.2dBm
+    //ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 6;  //14mA +10.0dBm
+    ACCESS_BUS_ADDR(PADS_GPIO_0_27_BUS) = 0x5a000018 + 7;  //16mA +10.6dBm
 
     struct GPCTL setupword = {6/*SRC*/, 1, 0, 0, 0, 3,0x5a};
-    ACCESS(CM_GP0CTL) = *((int*)&setupword);
+    ACCESS_BUS_ADDR(CM_GP0CTL_BUS) = *((int*)&setupword);
 }
 
 void txoff()
 {
     struct GPCTL setupword = {6/*SRC*/, 0, 0, 0, 0, 1,0x5a};
-    ACCESS(CM_GP0CTL) = *((int*)&setupword);
+    ACCESS_BUS_ADDR(CM_GP0CTL_BUS) = *((int*)&setupword);
 }
 
 // Transmit symbol sym for tsym seconds.
@@ -278,22 +327,22 @@ void txSym(
     // Configure the transmission for this iteration
     // Set GPIO pin to transmit f0
     bufPtr++;
-    while( ACCESS(DMA_PHYS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.p + f0_idx*4;
 
     // Wait for n_f0 PWM clocks
     bufPtr++;
-    while( ACCESS(DMA_PHYS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = n_f0;
 
     // Set GPIO pin to transmit f1
     bufPtr++;
-    while( ACCESS(DMA_PHYS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (long int)constPage.p + f1_idx*4;
 
     // Wait for n_f1 PWM clocks
     bufPtr=(bufPtr+1) % (1024);
-    while( ACCESS(DMA_PHYS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (long int)(instrs[bufPtr].p)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = n_f1;
 
     // Update counters
@@ -305,7 +354,7 @@ void txSym(
 
 void unSetupDMA(){
     //cout << "Exiting!" << std::endl;
-    struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS(DMA_PHYS_BASE));
+    struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS_BUS_ADDR(DMA_BUS_BASE));
     DMA0->CS =1<<31;  // reset dma controller
     txoff();
 }
@@ -408,7 +457,7 @@ void setupDMA(
        instrs[instrCnt].v = (void*)((long int)instrPage.v + sizeof(struct CB)*i);
        instrs[instrCnt].p = (void*)((long int)instrPage.p + sizeof(struct CB)*i);
        instr0->SOURCE_AD = (unsigned long int)constPage.p+2048;
-       instr0->DEST_AD = PWM_PHYS_BASE+0x18 /* FIF1 */;
+       instr0->DEST_AD = PWM_BUS_BASE+0x18 /* FIF1 */;
        instr0->TXFR_LEN = 4;
        instr0->STRIDE = 0;
        //instr0->NEXTCONBK = (int)instrPage.p + sizeof(struct CB)*(i+1);
@@ -418,7 +467,7 @@ void setupDMA(
 
        // Shouldn't this be (instrCnt%2) ???
        if (i%2) {
-         instr0->DEST_AD = CM_GP0DIV;
+         instr0->DEST_AD = CM_GP0DIV_BUS;
          instr0->STRIDE = 4;
          instr0->TI = (1<<26/* no wide*/) ;
        }
@@ -432,27 +481,27 @@ void setupDMA(
    ((struct CB*)(instrs[1023].v))->NEXTCONBK = (long int)instrs[0].p;
 
    // set up a clock for the PWM
-   ACCESS(CLK_PHYS_BASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000026;  // Source=PLLD and disable
+   ACCESS_BUS_ADDR(CLK_BUS_BASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000026;  // Source=PLLD and disable
    usleep(1000);
-   //ACCESS(CLK_PHYS_BASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002800;
-   ACCESS(CLK_PHYS_BASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002000;  // set PWM div to 2, for 250MHz
-   ACCESS(CLK_PHYS_BASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000016;  // Source=PLLD and enable
+   //ACCESS_BUS_ADDR(CLK_BUS_BASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002800;
+   ACCESS_BUS_ADDR(CLK_BUS_BASE + 41*4 /*PWMCLK_DIV*/)  = 0x5A002000;  // set PWM div to 2, for 250MHz
+   ACCESS_BUS_ADDR(CLK_BUS_BASE + 40*4 /*PWMCLK_CNTL*/) = 0x5A000016;  // Source=PLLD and enable
    usleep(1000);
 
    // set up pwm
-   ACCESS(PWM_PHYS_BASE + 0x0 /* CTRL*/) = 0;
+   ACCESS_BUS_ADDR(PWM_BUS_BASE + 0x0 /* CTRL*/) = 0;
    usleep(1000);
-   ACCESS(PWM_PHYS_BASE + 0x4 /* status*/) = -1;  // clear errors
+   ACCESS_BUS_ADDR(PWM_BUS_BASE + 0x4 /* status*/) = -1;  // clear errors
    usleep(1000);
    // Range should default to 32, but it is set at 2048 after reset on my RPi.
-   ACCESS(PWM_PHYS_BASE + 0x10)=32;
-   ACCESS(PWM_PHYS_BASE + 0x20)=32;
-   ACCESS(PWM_PHYS_BASE + 0x0 /* CTRL*/) = -1; //(1<<13 /* Use fifo */) | (1<<10 /* repeat */) | (1<<9 /* serializer */) | (1<<8 /* enable ch */) ;
+   ACCESS_BUS_ADDR(PWM_BUS_BASE + 0x10)=32;
+   ACCESS_BUS_ADDR(PWM_BUS_BASE + 0x20)=32;
+   ACCESS_BUS_ADDR(PWM_BUS_BASE + 0x0 /* CTRL*/) = -1; //(1<<13 /* Use fifo */) | (1<<10 /* repeat */) | (1<<9 /* serializer */) | (1<<8 /* enable ch */) ;
    usleep(1000);
-   ACCESS(PWM_PHYS_BASE + 0x8 /* DMAC*/) = (1<<31 /* DMA enable */) | 0x0707;
+   ACCESS_BUS_ADDR(PWM_BUS_BASE + 0x8 /* DMAC*/) = (1<<31 /* DMA enable */) | 0x0707;
 
    //activate dma
-   struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS(DMA_PHYS_BASE));
+   struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS_BUS_ADDR(DMA_BUS_BASE));
    DMA0->CS =1<<31;  // reset
    DMA0->CONBLK_AD=0;
    DMA0->TI=0;
@@ -465,10 +514,10 @@ void setupDMA(
 // Set up memory regions to access GPIO
 //
 void setup_io(
-  int & mem_fd,
-  char * & gpio_mem,
-  char * & gpio_map,
-  volatile unsigned * & gpio
+  int & mem_fd
+  //char * & gpio_mem,
+  //char * & gpio_map,
+  //volatile unsigned * & gpio
 ) {
     /* open /dev/mem */
     if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
@@ -479,36 +528,37 @@ void setup_io(
     /* mmap GPIO */
 
     // Allocate MAP block
-    if ((gpio_mem = (char *)malloc(BLOCK_SIZE + (PAGE_SIZE-1))) == NULL) {
-        std::cerr << "Error: allocation error" << std::endl;
-        ABORT (-1);
-    }
+    //if ((gpio_mem = (char *)malloc(BLOCK_SIZE + (PAGE_SIZE-1))) == NULL) {
+    //    std::cerr << "Error: allocation error" << std::endl;
+    //    ABORT (-1);
+    //}
 
     // Make sure pointer is on 4K boundary
-    if ((unsigned long)gpio_mem % PAGE_SIZE)
-        gpio_mem += PAGE_SIZE - ((unsigned long)gpio_mem % PAGE_SIZE);
+    //if ((unsigned long)gpio_mem % PAGE_SIZE)
+    //    gpio_mem += PAGE_SIZE - ((unsigned long)gpio_mem % PAGE_SIZE);
 
     // Now map it
-    gpio_map = (char *)mmap(
-                   gpio_mem,
-                   BLOCK_SIZE,
-                   PROT_READ|PROT_WRITE,
-                   MAP_SHARED|MAP_FIXED,
-                   mem_fd,
-                   GPIO_VIRT_BASE
-               );
+    //gpio_map = (char *)mmap(
+    //               gpio_mem,
+    //               BLOCK_SIZE,
+    //               PROT_READ|PROT_WRITE,
+    //               MAP_SHARED|MAP_FIXED,
+    //               mem_fd,
+    //               GPIO_VIRT_BASE
+    //           );
 
-    if ((long)gpio_map < 0) {
-        std::cerr << "Error: mmap error" << (long int)gpio_map << std::endl;
-        ABORT (-1);
-    }
+    //if ((long)gpio_map < 0) {
+    //    std::cerr << "Error: mmap error" << (long int)gpio_map << std::endl;
+    //    ABORT (-1);
+    //}
 
     // Always use volatile pointer!
-    gpio = (volatile unsigned *)gpio_map;
+    //gpio = (volatile unsigned *)gpio_map;
 }
 
 // Not sure why this function is needed as this code only uses GPIO4 and
 // this function sets gpio 7 through 11 as input...
+#if 0
 void setup_gpios(
   volatile unsigned * & gpio
 ){
@@ -524,11 +574,12 @@ void setup_gpios(
 
     // Set GPIO pins 7-11 to output
     for (g=7; g<=11; g++) {
-        INP_GPIO(g); // must use INP_GPIO before we can use OUT_GPIO
+        //INP_GPIO(g); // must use INP_GPIO before we can use OUT_GPIO
         //OUT_GPIO(g);
     }
 
 }
+#endif
 
 // Convert std::string to uppercase
 void to_upper(char *str)
@@ -1060,19 +1111,20 @@ int main(const int argc, char * const argv[]) {
 
   // Initial configuration
   int mem_fd;
-  char *gpio_mem, *gpio_map;
-  volatile unsigned *gpio = NULL;
-  setup_io(mem_fd,gpio_mem,gpio_map,gpio);
-  setup_gpios(gpio);
-  allof7e = (unsigned *)mmap(
+  //char *gpio_mem, *gpio_map;
+  //volatile unsigned *gpio = NULL;
+  //setup_io(mem_fd,gpio_mem,gpio_map,gpio);
+  setup_io(mem_fd);
+  //setup_gpios(gpio);
+  peri_base_virt = (unsigned *)mmap(
               NULL,
               0x002FFFFF,  //len
               PROT_READ|PROT_WRITE,
               MAP_SHARED,
               mem_fd,
-              BCM2708_PERI_BASE  //base
+              PERI_BASE_PHYS  //base
           );
-  if ((long int)allof7e==-1) {
+  if ((long int)peri_base_virt==-1) {
     std::cerr << "Error: mmap error!" << std::endl;
     ABORT(-1);
   }
