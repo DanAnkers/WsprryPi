@@ -280,9 +280,9 @@ void parse_commandline(
         ABORT(-1);
         break;
       case 's':
-        if (!strcmp(optarg,"PLLD")) {
+        if (!strcasecmp(optarg,"PLLD")) {
           source=PLLD;
-        } else if (!strcmp(optarg,"XTAL")) {
+        } else if (!strcasecmp(optarg,"XTAL")) {
           source=XTAL;
         } else {
           cerr << "Error: unrecognized frequency source" << endl;

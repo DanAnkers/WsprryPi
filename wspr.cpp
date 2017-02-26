@@ -267,6 +267,10 @@ void deallocMemPool() {
 
 // Disable the PWM clock and wait for it to become 'not busy'.
 void disable_clock() {
+  // Check if mapping has been set up yet.
+  if (peri_base_virt==NULL) {
+    return;
+  }
   // Disable the clock (in case it's already running) by reading current
   // settings and only clearing the enable bit.
   auto settings=ACCESS_BUS_ADDR(CM_GP0CTL_BUS);
@@ -405,10 +409,14 @@ void txSym(
 
 // Turn off (reset) DMA engine
 void unSetupDMA(){
-    //cout << "Exiting!" << std::endl;
-    struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS_BUS_ADDR(DMA_BUS_BASE));
-    DMA0->CS =1<<31;  // reset dma controller
-    txoff();
+  // Check if mapping has been set up yet.
+  if (peri_base_virt==NULL) {
+    return;
+  }
+  //cout << "Exiting!" << std::endl;
+  struct DMAregs* DMA0 = (struct DMAregs*)&(ACCESS_BUS_ADDR(DMA_BUS_BASE));
+  DMA0->CS =1<<31;  // reset dma controller
+  txoff();
 }
 
 // Truncate at bit lsb. i.e. set all bits less than lsb to zero.
@@ -862,46 +870,46 @@ void parse_commandline(
       continue;
     }
     // Must be a frequency
-    // First see if it is a std::string.
+    // First see if it is a string.
     double parsed_freq;
-    if (!strcmp(argv[optind],"LF")) {
+    if (!strcasecmp(argv[optind],"LF")) {
       parsed_freq=137500.0;
-    } else if (!strcmp(argv[optind],"LF-15")) {
+    } else if (!strcasecmp(argv[optind],"LF-15")) {
       parsed_freq=137612.5;
-    } else if (!strcmp(argv[optind],"MF")) {
+    } else if (!strcasecmp(argv[optind],"MF")) {
       parsed_freq=475700.0;
-    } else if (!strcmp(argv[optind],"MF-15")) {
+    } else if (!strcasecmp(argv[optind],"MF-15")) {
       parsed_freq=475812.5;
-    } else if (!strcmp(argv[optind],"160m")) {
+    } else if (!strcasecmp(argv[optind],"160m")) {
       parsed_freq=1838100.0;
-    } else if (!strcmp(argv[optind],"160m-15")) {
+    } else if (!strcasecmp(argv[optind],"160m-15")) {
       parsed_freq=1838212.5;
-    } else if (!strcmp(argv[optind],"80m")) {
+    } else if (!strcasecmp(argv[optind],"80m")) {
       parsed_freq=3594100.0;
-    } else if (!strcmp(argv[optind],"60m")) {
+    } else if (!strcasecmp(argv[optind],"60m")) {
       parsed_freq=5288700.0;
-    } else if (!strcmp(argv[optind],"40m")) {
+    } else if (!strcasecmp(argv[optind],"40m")) {
       parsed_freq=7040100.0;
-    } else if (!strcmp(argv[optind],"30m")) {
+    } else if (!strcasecmp(argv[optind],"30m")) {
       parsed_freq=10140200.0;
-    } else if (!strcmp(argv[optind],"20m")) {
+    } else if (!strcasecmp(argv[optind],"20m")) {
       parsed_freq=14097100.0;
-    } else if (!strcmp(argv[optind],"17m")) {
+    } else if (!strcasecmp(argv[optind],"17m")) {
       parsed_freq=18106100.0;
-    } else if (!strcmp(argv[optind],"15m")) {
+    } else if (!strcasecmp(argv[optind],"15m")) {
       parsed_freq=21096100.0;
-    } else if (!strcmp(argv[optind],"12m")) {
+    } else if (!strcasecmp(argv[optind],"12m")) {
       parsed_freq=24926100.0;
-    } else if (!strcmp(argv[optind],"10m")) {
+    } else if (!strcasecmp(argv[optind],"10m")) {
       parsed_freq=28126100.0;
-    } else if (!strcmp(argv[optind],"6m")) {
+    } else if (!strcasecmp(argv[optind],"6m")) {
       parsed_freq=50294500.0;
-    } else if (!strcmp(argv[optind],"4m")) {
+    } else if (!strcasecmp(argv[optind],"4m")) {
       parsed_freq=70092500.0;
-    } else if (!strcmp(argv[optind],"2m")) {
+    } else if (!strcasecmp(argv[optind],"2m")) {
       parsed_freq=144490500.0;
     } else {
-      // Not a std::string. See if it can be parsed as a double.
+      // Not a string. See if it can be parsed as a double.
       char * endp;
       parsed_freq=strtod(argv[optind],&endp);
       if ((optarg==endp)||(*endp!='\0')) {
