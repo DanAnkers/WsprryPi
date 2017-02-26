@@ -41,6 +41,7 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 #include <pthread.h>
 #include <sys/timex.h>
 
@@ -920,6 +921,10 @@ void parse_commandline(
     optind++;
     center_freq_set.push_back(parsed_freq);
   }
+
+  // Convert to uppercase
+  transform(callsign.begin(),callsign.end(),callsign.begin(),::toupper);
+  transform(locator.begin(),locator.end(),locator.begin(),::toupper);
 
   // Check consistency among command line options.
   if (ppm&&self_cal) {
