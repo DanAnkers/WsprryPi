@@ -209,8 +209,8 @@ struct DMAregs {
 
 // Virtual and bus addresses of a page of physical memory.
 struct PageInfo {
-    void* b;  // bus address
-    void* v;  // virtual address
+    void* b; // bus address
+    void* v; // virtual address
 };
 
 // Must be global so that exit handlers can access this.
