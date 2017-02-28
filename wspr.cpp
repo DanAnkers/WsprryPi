@@ -1038,7 +1038,7 @@ void timeval_print(struct timeval *tv) {
     //printf("%ld.%06ld", tv->tv_sec, tv->tv_usec);
     curtime = tv->tv_sec;
     //strftime(buffer, 30, "%m-%d-%Y %T", localtime(&curtime));
-    strftime(buffer, 30, "UTC %m-%d-%Y %T", gmtime(&curtime));
+    strftime(buffer, 30, "UTC %Y-%m-%d %T", gmtime(&curtime));
     printf("%s.%03ld", buffer, (tv->tv_usec+500)/1000);
 }
 
