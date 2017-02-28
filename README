@@ -77,8 +77,14 @@ Radio licensing / RF:
   of your Raspberry Pi, connect an antenna to the LPF. The GPIO4 and GND pins
   are found on header P1 pin 7 and 9 respectively, the pin closest to P1 label
   is pin 1 and its 3rd and 4th neighbour is pin 7 and 9 respectively. See this
-  link for pin layout: http://elinux.org/RPi_Low-level_peripherals Examples of
-  low-pass filters can be found here: http://www.gqrp.com/harmonic_filters.pdf
+  link for pin layout: http://elinux.org/RPi_Low-level_peripherals
+  
+  Examples of low-pass filters can be found here:
+    http://www.gqrp.com/harmonic_filters.pdf
+  TAPR makes a very nice shield for the Raspberry Pi that is pre-assembled,
+  performs the appropriate filtering for the 20m band, and also increases
+  the power output to 20dBm! Just connect your antenna and you're good-to-go!
+    https://www.tapr.org/kits_20M-wspr-pi.html
 
   The expected power output is 10mW (+10dBm) in a 50 Ohm load. This looks
   neglible, but when connected to a simple dipole antenna this may result in
@@ -103,11 +109,6 @@ Radio licensing / RF:
   of isolation, e.g. by using a RF transformer, a simple buffer/driver/PA
   stage, two schottky small signal diodes back to back.
 
-  TAPR makes a very nice shield for the Raspberry Pi that is pre-assembled,
-  performs the appropriate filtering for the 20m band, and also increases
-  the power output to 20dBm! Just connect your antenna and you're good-to-go!
-    https://www.tapr.org/kits_20M-wspr-pi.html
-
 ******
 TX Timing:
 ******
@@ -123,6 +124,10 @@ TX Timing:
 ******
 Calibration:
 ******
+  As of 2017-02, NTP calibration is enabled by default and produces a
+  frequency error of about 0.1 PPM after the Pi has temperature stabilized
+  and the NTP loop has converged.
+
   Frequency calibration is REQUIRED to ensure that the WSPR-2 transmission
   occurs within the narrow 200 Hz band. The reference crystal on your RPi might
   have an frequency error (which in addition is temp. dependent -1.3Hz/degC
@@ -137,10 +142,6 @@ Calibration:
   due to delays in the NTP measurement loop and this method works best if your
   Pi has been on for a long time, the crystal's temperature has stabilized,
   and the NTP control loop has converged.
-
-  As of 2017-02, NTP calibration is enabled by default and produces a
-  frequency error of about 0.1 PPM after the Pi has temperature stabilized
-  and the NTP loop has converged.
 
   AM calibration:
   A practical way to calibrate is to tune the transmitter on the same frequency
@@ -169,8 +170,7 @@ PWM Peripheral:
   by editing /etc/modules and commenting out the snd-bcm2835 device.
 
 ******
-Example usage:
-******
+Example usage: ******
   Brief help screen
     ./wspr --help
 
