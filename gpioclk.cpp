@@ -49,17 +49,13 @@ using namespace std;
 #define F_XTAL     (19200000.0)
 #define F_PLLD_CLK (500000000.0)
 
-//Now we autodetect it via makefile.
+// Choose proper base address depending on RPI1/RPI2 setting from makefile.
 #ifdef RPI2
-
 #define BCM2708_PERI_BASE 0x3f000000
-#pragma message "Raspberry Pi 2 detected."
-
+//#pragma message "Raspberry Pi 2/3 detected."
 #else
-
 #define BCM2708_PERI_BASE 0x20000000
-#pragma message "Raspberry Pi 1 detected."
-
+//#pragma message "Raspberry Pi 1 detected."
 #endif
 
 #define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
@@ -284,9 +280,9 @@ void parse_commandline(
         ABORT(-1);
         break;
       case 's':
-        if (!strcmp(optarg,"PLLD")) {
+        if (!strcasecmp(optarg,"PLLD")) {
           source=PLLD;
-        } else if (!strcmp(optarg,"XTAL")) {
+        } else if (!strcasecmp(optarg,"XTAL")) {
           source=XTAL;
         } else {
           cerr << "Error: unrecognized frequency source" << endl;
@@ -351,6 +347,12 @@ void parse_commandline(
 }
 
 int main(const int argc, char * const argv[]) {
+#ifdef RPI1
+  std::cout << "Detected Raspberry Pi version 1" << std::endl;
+#else
+  std::cout << "Detected Raspberry Pi version 2/3" << std::endl;
+#endif
+
   // Parse arguments
   source_t source;
   bool freq_specified;

@@ -5,14 +5,14 @@ pi_version_flag = $(if $(call archis,armv7,dummy-text),-DRPI2,-DRPI1)
 
 all: wspr gpioclk
 
-mailbox.o:
+mailbox.o: mailbox.c mailbox.h
 	g++ -c -Wall -lm mailbox.c
 
-wspr: mailbox.o wspr.cpp
-	g++ -Wall -lm $(pi_version_flag) mailbox.o wspr.cpp -owspr
+wspr: mailbox.o wspr.cpp mailbox.h
+	g++ -D_GLIBCXX_DEBUG -std=c++11 -Wall -Werror -fmax-errors=5 -lm $(pi_version_flag) mailbox.o wspr.cpp -owspr
 
 gpioclk: gpioclk.cpp
-	g++ -Wall -lm $(pi_version_flag) gpioclk.cpp -ogpioclk
+	g++ -D_GLIBCXX_DEBUG -std=c++11 -Wall -Werror -fmax-errors=5 -lm $(pi_version_flag) gpioclk.cpp -ogpioclk
 
 clean:
 	-rm gpioclk

@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define MAJOR_NUM_B 100
 #define IOCTL_MBOX_PROPERTY _IOWR(MAJOR_NUM_B, 0, char *)
 #define DEVICE_FILE_NAME "/dev/vcio"
-#define LOCAL_DEVICE_FILE_NAME "mbox"
+#define LOCAL_DEVICE_FILE_NAME "/tmp/mbox"
 
 int mbox_open();
 void mbox_close(int file_desc);
