@@ -963,7 +963,7 @@ void parse_commandline(
     std::cout << temp.str();
     temp.str("");
     if (self_cal) {
-      temp << "  NTP will be used to peridocially calibrate the transmission frequency" << std::endl;
+      temp << "  NTP will be used to periodically calibrate the transmission frequency" << std::endl;
     } else if (ppm) {
       temp << "  PPM value to be used for all transmissions: " << ppm << std::endl;
     }
@@ -973,7 +973,7 @@ void parse_commandline(
       temp << "  Transmissions will continue forever until stopped with CTRL-C" << std::endl;
     }
     if (random_offset) {
-      temp << "  A small random frequency offset will be added to all transmisisons" << std::endl;
+      temp << "  A small random frequency offset will be added to all transmissions" << std::endl;
     }
     if (temp.str().length()) {
       std::cout << "Extra options:" << std::endl;
