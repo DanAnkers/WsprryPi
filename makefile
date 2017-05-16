@@ -1,7 +1,13 @@
 prefix=/usr/local
 
-archis = $(if $(findstring $(1),$(shell uname -m)),$(2))
-pi_version_flag = $(if $(call archis,armv7,dummy-text),-DRPI2,-DRPI1)
+ifeq ($(findstring armv6,$(shell uname -m)),armv6)
+# Broadcom BCM2835 SoC with 700 MHz 32-bit ARM 1176JZF-S (ARMv6 arch)
+PI_VERSION = -DRPI1
+else
+# Broadcom BCM2836 SoC with 900 MHz 32-bit quad-core ARM Cortex-A7  (ARMv7 arch)
+# Broadcom BCM2837 SoC with 1.2 GHz 64-bit quad-core ARM Cortex-A53 (ARMv8 arch)
+PI_VERSION = -DRPI23
+endif
 
 all: wspr gpioclk
 
@@ -9,15 +15,13 @@ mailbox.o: mailbox.c mailbox.h
 	g++ -c -Wall -lm mailbox.c
 
 wspr: mailbox.o wspr.cpp mailbox.h
-	g++ -D_GLIBCXX_DEBUG -std=c++11 -Wall -Werror -fmax-errors=5 -lm $(pi_version_flag) mailbox.o wspr.cpp -owspr
+	g++ -D_GLIBCXX_DEBUG -std=c++11 -Wall -Werror -fmax-errors=5 -lm $(PI_VERSION) mailbox.o wspr.cpp -owspr
 
 gpioclk: gpioclk.cpp
-	g++ -D_GLIBCXX_DEBUG -std=c++11 -Wall -Werror -fmax-errors=5 -lm $(pi_version_flag) gpioclk.cpp -ogpioclk
+	g++ -D_GLIBCXX_DEBUG -std=c++11 -Wall -Werror -fmax-errors=5 -lm $(PI_VERSION) gpioclk.cpp -ogpioclk
 
 clean:
-	-rm gpioclk
-	-rm wspr
-	-rm mailbox.o
+	-rm -f gpioclk gpioclk.o wspr wspr.o mailbox.o
 
 .PHONY: install
 install: wspr
