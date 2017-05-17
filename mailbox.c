@@ -86,7 +86,8 @@ static int mbox_property(int file_desc, void *buf)
     int ret_val = ioctl(file_desc, IOCTL_MBOX_PROPERTY, buf);
 
     if (ret_val < 0) {
-        printf("ioctl_set_msg failed:%d\n", ret_val);
+        // something wrong somewhere, send some details to stderr
+        perror("ioctl_set_msg failed");
     }
 
 #ifdef DEBUG
@@ -114,7 +115,10 @@ unsigned mem_alloc(int file_desc, unsigned size, unsigned align, unsigned flags)
     p[i++] = 0x00000000; // end tag
     p[0] = i*sizeof *p; // actual size
 
-    if(mbox_property(file_desc, p) < 0) return 0;
+    if(mbox_property(file_desc, p) < 0) {
+        printf("mem_alloc: mbox_property() error, abort!\n");
+        exit (-1);
+    }
     return p[5];
 }
 
@@ -133,7 +137,10 @@ unsigned mem_free(int file_desc, unsigned handle)
     p[i++] = 0x00000000; // end tag
     p[0] = i*sizeof *p; // actual size
 
-    if(mbox_property(file_desc, p) < 0) return 0;
+    if(mbox_property(file_desc, p) < 0) {
+        printf("mem_free: mbox_property() error, ignoring\n");
+        return 0;
+    }
     return p[5];
 }
 
@@ -152,7 +159,10 @@ unsigned mem_lock(int file_desc, unsigned handle)
     p[i++] = 0x00000000; // end tag
     p[0] = i*sizeof *p; // actual size
 
-    if(mbox_property(file_desc, p) < 0) return 0;
+    if(mbox_property(file_desc, p) < 0) {
+        printf("mem_lock: mbox_property() error, abort!\n");
+        exit (-1);
+    }
     return p[5];
 }
 
@@ -171,7 +181,10 @@ unsigned mem_unlock(int file_desc, unsigned handle)
     p[i++] = 0x00000000; // end tag
     p[0] = i*sizeof *p; // actual size
 
-    if(mbox_property(file_desc, p) < 0) return 0;
+    if(mbox_property(file_desc, p) < 0) {
+        printf("mem_unlock: mbox_property() error, ignoring\n");
+        return 0;
+    }
     return p[5];
 }
 
@@ -196,7 +209,10 @@ unsigned execute_code(int file_desc, unsigned code, unsigned r0, unsigned r1, un
     p[i++] = 0x00000000; // end tag
     p[0] = i*sizeof *p; // actual size
 
-    if(mbox_property(file_desc, p) < 0) return 0;
+    if(mbox_property(file_desc, p) < 0) {
+        printf("execute_code: mbox_property() error, ignoring\n");
+        return 0;
+    }
     return p[5];
 }
 
@@ -216,7 +232,10 @@ unsigned qpu_enable(int file_desc, unsigned enable)
     p[i++] = 0x00000000; // end tag
     p[0] = i*sizeof *p; // actual size
 
-    if(mbox_property(file_desc, p) < 0) return 0;
+    if(mbox_property(file_desc, p) < 0) {
+        printf("qpu_enable: mbox_property() error, ignoring\n");
+        return 0;
+    }
     return p[5];
 }
 
@@ -237,7 +256,10 @@ unsigned execute_qpu(int file_desc, unsigned num_qpus, unsigned control, unsigne
     p[i++] = 0x00000000; // end tag
     p[0] = i*sizeof *p; // actual size
 
-    if(mbox_property(file_desc, p) < 0) return 0;
+    if(mbox_property(file_desc, p) < 0) {
+        printf("execute_qpu: mbox_property() error, ignoring\n");
+        return 0;
+    }
     return p[5];
 }
 
@@ -245,6 +267,8 @@ int mbox_open() {
     int file_desc;
 
     // Open a char device file used for communicating with kernel mbox driver.
+  
+    // try to use the device node in /dev first (created by kernels 4.1+)
     file_desc = open(DEVICE_FILE_NAME, 0);
     if(file_desc >= 0) {
         //printf("Using mbox device " DEVICE_FILE_NAME ".\n");
@@ -255,18 +279,19 @@ int mbox_open() {
     unlink(LOCAL_DEVICE_FILE_NAME);
     if(mknod(LOCAL_DEVICE_FILE_NAME, S_IFCHR|0600, makedev(MAJOR_NUM_A, 0)) >= 0 &&
         (file_desc = open(LOCAL_DEVICE_FILE_NAME, 0)) >= 0) {
-        //printf("Using local mbox device file with major %d.\n", MAJOR_NUM_A);
+        printf("Using local mbox device file with major %d.\n", MAJOR_NUM_A);
         return file_desc;
     }
 
     unlink(LOCAL_DEVICE_FILE_NAME);
     if(mknod(LOCAL_DEVICE_FILE_NAME, S_IFCHR|0600, makedev(MAJOR_NUM_B, 0)) >= 0 &&
         (file_desc = open(LOCAL_DEVICE_FILE_NAME, 0)) >= 0) {
-        //printf("Using local mbox device file with major %d.\n", MAJOR_NUM_B);
+        printf("Using local mbox device file with major %d.\n", MAJOR_NUM_B);
         return file_desc;
     }
 
-    return -1;
+    printf("Unable to open / create kernel mbox device file, abort!\n");
+    exit (-1);
 }
 
 void mbox_close(int file_desc) {
