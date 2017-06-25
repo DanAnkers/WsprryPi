@@ -45,7 +45,12 @@
 #include <pthread.h>
 #include <sys/timex.h>
 
+#ifdef __cplusplus
+extern "C" {
 #include "mailbox.h"
+}
+#endif /* __cplusplus */
+
 
 // Note on accessing memory in RPi:
 //
