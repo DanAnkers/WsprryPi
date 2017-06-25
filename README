@@ -33,6 +33,13 @@ Installation / update:
 ******
 Usage: (WSPR --help output):
 ******
+
+  If running from the console, recent versions of Jessie cause WsprryPi to
+  crash when the console screen blanks. The symptom is that WsppryPi works
+  for several transmissions and then crashes. The fix is to add "consoleblank=0"
+  to /boot/cmdline.txt.
+  https://github.com/JamesP6000/WsprryPi/issues/10
+
   Usage:
     wspr [options] callsign locator tx_pwr_dBm f1 <f2> <f3> ...
       OR
@@ -179,7 +186,8 @@ PWM Peripheral:
   by editing /etc/modules and commenting out the snd-bcm2835 device.
 
 ******
-Example usage: ******
+Example usage:
+******
   Brief help screen
     ./wspr --help
 
