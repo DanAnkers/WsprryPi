@@ -200,15 +200,15 @@ typedef enum {WSPR,TONE} mode_type;
 
 /** Structure used to control clock generator. The bit structure of the GPCTL register */
 struct GPCTL {
-    uint8_t SRC         : 4; /** source of clock is PLLD or XTAL */
-    uint8_t ENAB        : 1; /** enable transmit */
-    uint8_t KILL        : 1; /** always 0 */
-    uint8_t             : 1; /** always 0 */
-    uint8_t BUSY        : 1; /** always 0 */
-    uint8_t FLIP        : 1; /** always 0 */
-    uint8_t MASH        : 2; /** 3 for on and 1 for off */
-    uint16_t            : 13; /** always 0 */
-    uint8_t PASSWD      : 8; /** always 0x5a */
+    char SRC         : 4; /** source of clock is PLLD or XTAL */
+    char ENAB        : 1; /** enable transmit */
+    char KILL        : 1; /** always 0 */
+    char             : 1; /** always 0 */
+    char BUSY        : 1; /** always 0 */
+    char FLIP        : 1; /** always 0 */
+    char MASH        : 2; /** 3 for on and 1 for off */
+    unsigned int            : 13; /** always 0 */
+    char PASSWD      : 8; /** always 0x5a */
 };
 
 /** Structure used to tell the DMA engine what to do */
@@ -247,7 +247,7 @@ static struct {
   int handle;                      /** From mbox_open() */
   uint32_t mem_ref = 0;            /** From mem_alloc() */
   uint32_t bus_addr;               /** From mem_lock() */
-  void *virt_addr = NULL; /** From mapmem() */ //ha7ilm: originally uint8_t
+  unsigned char *virt_addr = NULL; /** From mapmem() */ //ha7ilm: originally uint8_t
   uint32_t pool_size;  /** the number of pages allocated */
   uint32_t pool_cnt;   /** the count for which page we are on */
 } mbox;
@@ -259,12 +259,12 @@ static struct {
  */
 void allocMemPool(uint32_t numpages) {
   // Allocate space.
-  mbox.mem_ref = mem_alloc(mbox.handle, (uint32_t)4096*numpages, (uint32_t)4096, (uint32_t)MEM_FLAG);
+  mbox.mem_ref = mem_alloc(mbox.handle, 4096*numpages, 4096, MEM_FLAG);
   // Lock down the allocated space and return its bus address.
   mbox.bus_addr = mem_lock(mbox.handle, mbox.mem_ref);
   // Conert the bus address to a physical address and map this to virtual
   // (aka user) space.
-  mbox.virt_addr = (void*)mapmem((uint32_t)BUS_TO_PHYS(mbox.bus_addr), (uint32_t)4096*numpages);
+  mbox.virt_addr = (unsigned char*)mapmem(BUS_TO_PHYS(mbox.bus_addr), 4096*numpages);
   // The number of pages in the pool. Never changes!
   mbox.pool_size=numpages;
   // How many of the created pages have actually been used.
@@ -296,7 +296,7 @@ void getRealMemPageFromPool(void ** vAddr, void **bAddr) {
  */
 void deallocMemPool() {
   if(mbox.virt_addr!=NULL) {
-    unmapmem(mbox.virt_addr, (uint32_t)mbox.pool_size*4096);
+    unmapmem(mbox.virt_addr, mbox.pool_size*4096);
   }
   if (mbox.mem_ref!=0) {
     mem_unlock(mbox.handle, mbox.mem_ref);
@@ -315,11 +315,11 @@ void disable_clock() {
   }
   // Disable the clock (in case it's already running) by reading current
   // settings and only clearing the enable bit.
-  uint32_t settings=ACCESS_BUS_ADDR(CM_GP0CTL_BUS);
+  auto settings=ACCESS_BUS_ADDR(CM_GP0CTL_BUS);
   // Clear enable bit and add password
   settings=(settings&0x7EF)|0x5A000000;
   // Disable
-  ACCESS_BUS_ADDR(CM_GP0CTL_BUS) = *((uint32_t*)&settings);
+  ACCESS_BUS_ADDR(CM_GP0CTL_BUS) = *((int32_t*)&settings);
   // Wait for clock to not be busy.
   while (true) {
     if (!(ACCESS_BUS_ADDR(CM_GP0CTL_BUS)&(1<<7))) {
@@ -571,7 +571,7 @@ void setupDMA(
   struct PageInfo & instrPage,
   struct PageInfo instrs[]
 ){
-  allocMemPool((uint32_t)1025);
+  allocMemPool(1025);
 
   // Allocate a page of ram for the constants
   getRealMemPageFromPool(&constPage.v, &constPage.b);
@@ -721,14 +721,14 @@ void wspr(
   uint32_t n2=(ng<<7)|(p+64+nadd);
 
   // pack n1,n2,zero-tail into 50 bits
-  uint8_t packed[11] = {
-    static_cast<uint8_t>(n1>>20),
-    static_cast<uint8_t>(n1>>12),
-    static_cast<uint8_t>(n1>>4),
-    static_cast<uint8_t>(((n1&0x0f)<<4)|((n2>>18)&0x0f)),
-    static_cast<uint8_t>(n2>>10),
-    static_cast<uint8_t>(n2>>2),
-    static_cast<uint8_t>((n2&0x03)<<6),
+  char packed[11] = {
+    static_cast<char>(n1>>20),
+    static_cast<char>(n1>>12),
+    static_cast<char>(n1>>4),
+    static_cast<char>(((n1&0x0f)<<4)|((n2>>18)&0x0f)),
+    static_cast<char>(n2>>10),
+    static_cast<char>(n2>>2),
+    static_cast<char>((n2&0x03)<<6),
     0,
     0,
     0,
@@ -1247,7 +1247,7 @@ void setup_peri_base_virt() {
     mem_fd,
     PERI_BASE_PHYS  //base
   );
-  if (peri_base_virt == MAP_FAILED) {
+  if (peri_base_virt==MAP_FAILED) {
     std::cerr << "Error: peri_base_virt mmap error!" << std::endl;
     ABORT(-1);
   }
