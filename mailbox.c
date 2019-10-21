@@ -1,4 +1,7 @@
-/*
+/**
+    @file mailbox.c
+    @brief don't know yet
+
 Copyright (c) 2012, Broadcom Europe Ltd.
 All rights reserved.
 Redistribution and use in source and binary forms, with or without
@@ -33,15 +36,21 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 
 #include "mailbox.h"
 
+/** value used to calculate offset in mapmem */
 #define PAGE_SIZE (4*1024)
 
-void *mapmem(unsigned base, unsigned size)
+/*-------------------------------------------------------------------
+ * Function:
+ *     mapmem
+ */
+void *mapmem(uint32_t base, uint32_t size)
 {
     int mem_fd;
-    unsigned offset = base % PAGE_SIZE;
+    uint32_t offset = base % PAGE_SIZE;
     base = base - offset;
     /* open /dev/mem */
     if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
@@ -66,7 +75,11 @@ void *mapmem(unsigned base, unsigned size)
     return (char *)mem + offset;
 }
 
-void *unmapmem(void *addr, unsigned size)
+/*-------------------------------------------------------------------
+ * Function:
+ *     unmapmem
+ */
+void *unmapmem(void *addr, uint32_t size)
 {
     int s = munmap(addr, size);
     if (s != 0) {
@@ -81,6 +94,14 @@ void *unmapmem(void *addr, unsigned size)
  * use ioctl to send mbox property message
  */
 
+/*-------------------------------------------------------------------
+ * Function:
+ *     mbox_property
+ * @breif make system call to manipulate the file descriptor
+ * @param file_desc - the file descriptor
+ * @param buf - an untyped memory pointer
+ * @return int - 0 on success and -1 on failure
+ */
 static int mbox_property(int file_desc, void *buf)
 {
     int ret_val = ioctl(file_desc, IOCTL_MBOX_PROPERTY, buf);
@@ -98,10 +119,14 @@ static int mbox_property(int file_desc, void *buf)
     return ret_val;
 }
 
-unsigned mem_alloc(int file_desc, unsigned size, unsigned align, unsigned flags)
+/*-------------------------------------------------------------------
+ * Function:
+ *     mem_alloc
+ */
+uint32_t mem_alloc(int file_desc, uint32_t size, uint32_t align, uint32_t flags)
 {
-    int i=0;
-    unsigned p[32];
+    int32_t i=0;
+    uint32_t p[32];
     p[i++] = 0; // size
     p[i++] = 0x00000000; // process request
 
@@ -122,10 +147,14 @@ unsigned mem_alloc(int file_desc, unsigned size, unsigned align, unsigned flags)
     return p[5];
 }
 
-unsigned mem_free(int file_desc, unsigned handle)
+/*-------------------------------------------------------------------
+ * Function:
+ *     mem_free
+ */
+uint32_t mem_free(int file_desc, uint32_t handle)
 {
-    int i=0;
-    unsigned p[32];
+    int32_t i=0;
+    uint32_t p[32];
     p[i++] = 0; // size
     p[i++] = 0x00000000; // process request
 
@@ -144,10 +173,14 @@ unsigned mem_free(int file_desc, unsigned handle)
     return p[5];
 }
 
-unsigned mem_lock(int file_desc, unsigned handle)
+/*-------------------------------------------------------------------
+ * Function:
+ *     mem_lock
+ */
+uint32_t mem_lock(int file_desc, uint32_t handle)
 {
-    int i=0;
-    unsigned p[32];
+    int32_t i=0;
+    uint32_t p[32];
     p[i++] = 0; // size
     p[i++] = 0x00000000; // process request
 
@@ -166,10 +199,14 @@ unsigned mem_lock(int file_desc, unsigned handle)
     return p[5];
 }
 
-unsigned mem_unlock(int file_desc, unsigned handle)
+/*-------------------------------------------------------------------
+ * Function:
+ *     mem_unlock
+ */
+uint32_t mem_unlock(int file_desc, uint32_t handle)
 {
-    int i=0;
-    unsigned p[32];
+    int32_t i=0;
+    uint32_t p[32];
     p[i++] = 0; // size
     p[i++] = 0x00000000; // process request
 
@@ -188,10 +225,14 @@ unsigned mem_unlock(int file_desc, unsigned handle)
     return p[5];
 }
 
-unsigned execute_code(int file_desc, unsigned code, unsigned r0, unsigned r1, unsigned r2, unsigned r3, unsigned r4, unsigned r5)
+/*-------------------------------------------------------------------
+ * Function:
+ *     execute_code
+ */
+uint32_t execute_code(int file_desc, uint32_t code, uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3, uint32_t r4, uint32_t r5)
 {
-    int i=0;
-    unsigned p[32];
+    int32_t i=0;
+    uint32_t p[32];
     p[i++] = 0; // size
     p[i++] = 0x00000000; // process request
 
@@ -216,10 +257,14 @@ unsigned execute_code(int file_desc, unsigned code, unsigned r0, unsigned r1, un
     return p[5];
 }
 
-unsigned qpu_enable(int file_desc, unsigned enable)
+/*-------------------------------------------------------------------
+ * Function:
+ *     qpu_enable
+ */
+uint32_t qpu_enable(int file_desc, uint32_t enable)
 {
-    int i=0;
-    unsigned p[32];
+    int32_t i=0;
+    uint32_t p[32];
 
     p[i++] = 0; // size
     p[i++] = 0x00000000; // process request
@@ -239,9 +284,13 @@ unsigned qpu_enable(int file_desc, unsigned enable)
     return p[5];
 }
 
-unsigned execute_qpu(int file_desc, unsigned num_qpus, unsigned control, unsigned noflush, unsigned timeout) {
-    int i=0;
-    unsigned p[32];
+/*-------------------------------------------------------------------
+ * Function:
+ *     execute_qpu
+ */
+uint32_t execute_qpu(int file_desc, uint32_t num_qpus, uint32_t control, uint32_t noflush, uint32_t timeout) {
+    int32_t i=0;
+    uint32_t p[32];
 
     p[i++] = 0; // size
     p[i++] = 0x00000000; // process request
@@ -263,6 +312,10 @@ unsigned execute_qpu(int file_desc, unsigned num_qpus, unsigned control, unsigne
     return p[5];
 }
 
+/*-------------------------------------------------------------------
+ * Function:
+ *     mbox_open  
+ */
 int mbox_open() {
     int file_desc;
 
@@ -294,6 +347,10 @@ int mbox_open() {
     exit (-1);
 }
 
+/*-------------------------------------------------------------------
+ * Function:
+ *     mbox_close
+ */
 void mbox_close(int file_desc) {
     close(file_desc);
 }

@@ -1,7 +1,8 @@
-// Simple program to route either the cyrstal clock or PLL clock to the
-// output GPIO pin.
+/** 
+ * @file gpioclk.cpp
+ * @brief Simple program to route either the cyrstal clock or PLL clock to the output GPIO pin. This program creates a device driver to the GPIO pins that can be written to or read from the mailbox code in wspr.
 
-/*
+
 License:
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -38,68 +39,100 @@ License:
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <stdint.h>
 
 using namespace std;
 
+/** call exit */
 #define ABORT(a) exit(a)
-// Used for debugging
+/** Used for debugging */
 #define MARK std::cout << "Currently in file: " << __FILE__ << " line: " << __LINE__ << std::endl
 
-// Nominal clock frequencies
+/** Nominal clock frequency */
 #define F_XTAL     (19200000.0)
+/** Nominal clock frequency */
 #define F_PLLD_CLK (500000000.0)
 
 // Choose proper base address depending on RPI1/RPI2 setting from makefile.
 #ifdef RPI2
+/** Raspberry Pi 2/3 detected */
 #define BCM2708_PERI_BASE 0x3f000000
 //#pragma message "Raspberry Pi 2/3 detected."
 #else
+/** Raspberry Pi 1 detected */
 #define BCM2708_PERI_BASE 0x20000000
 //#pragma message "Raspberry Pi 1 detected."
 #endif
 
-#define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
+/** GPIO controller */
+#define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) 
+/** size of a page */
 #define PAGE_SIZE (4*1024)
+/** the size of a block */
 #define BLOCK_SIZE (4*1024)
 
 // This must be declared global so that it can be called by the atexit
 // function.
-volatile unsigned *allof7e = NULL;
+/** The pointer to the base of the GPIO addresses */
+volatile void *allof7e = NULL;
 
 // GPIO setup macros. Always use INP_GPIO(x) before using OUT_GPIO(x) or SET_GPIO_ALT(x,y)
+/** clear bits for this GPIO */
 #define INP_GPIO(g) *(gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
+/** set the out bit for this GPIO */
 #define OUT_GPIO(g) *(gpio+((g)/10)) |=  (1<<(((g)%10)*3))
+/** setting the values for this GPIO, but I'm not sure what a means here */
 #define SET_GPIO_ALT(g,a) *(gpio+(((g)/10))) |= (((a)<=3?(a)+4:(a)==4?3:2)<<(((g)%10)*3))
 
-#define GPIO_SET *(gpio+7)  // sets   bits which are 1 ignores bits which are 0
-#define GPIO_CLR *(gpio+10) // clears bits which are 1 ignores bits which are 0
-#define GPIO_GET *(gpio+13) // sets   bits which are 1 ignores bits which are 0
+/** sets   bits which are 1 ignores bits which are 0 */
+#define GPIO_SET *(gpio+7)  
+/** clears bits which are 1 ignores bits which are 0 */
+#define GPIO_CLR *(gpio+10) 
+/** sets   bits which are 1 ignores bits which are 0 */
+#define GPIO_GET *(gpio+13) 
 
-#define ACCESS(base) *(volatile int*)((long int)allof7e+base-0x7e000000)
+/** pointer to an address in the GPIO block of memory */
+#define ACCESS(base) *(volatile uint32_t*)((uint32_t)allof7e+base-0x7e000000)
+/** set a bit in the GPIO register at address base */
 #define SETBIT(base, bit) ACCESS(base) |= 1<<bit
+/** clear a bit in the GPIO register at address base */
 #define CLRBIT(base, bit) ACCESS(base) &= ~(1<<bit)
+/** address of GPIO register CM_GP0CTL */
 #define CM_GP0CTL (0x7e101070)
+/** address of GPIO register GPFSEL0 */
 #define GPFSEL0 (0x7E200000)
+/** address of GPIO register PADS_GPIO_0_27 */
 #define PADS_GPIO_0_27  (0x7e10002c)
+/** address of GPIO register CM_GP0DIV */
 #define CM_GP0DIV (0x7e101074)
+/** address of GPIO register CLKBASE */
 #define CLKBASE (0x7E101000)
+/** address of GPIO register DMABASE */
 #define DMABASE (0x7E007000)
-#define PWMBASE  (0x7e20C000) /* PWM controller */
+/** address of PWM Controller */
+#define PWMBASE  (0x7e20C000) 
 
+/** an enum to select the source of the clock */
 typedef enum {PLLD,XTAL} source_t;
 
+/** the bit structure of the GPCTL register */
 struct GPCTL {
-    char SRC         : 4;
-    char ENAB        : 1;
-    char KILL        : 1;
-    char             : 1;
-    char BUSY        : 1;
-    char FLIP        : 1;
-    char MASH        : 2;
-    unsigned int     : 13;
-    char PASSWD      : 8;
+    uint8_t SRC         : 4; /** source of clock is PLLD or XTAL */
+    uint8_t ENAB        : 1; /** enable transmit */
+    uint8_t KILL        : 1; /** always 0 */
+    uint8_t             : 1; /** always 0 */
+    uint8_t BUSY        : 1; /** always 0 */
+    uint8_t FLIP        : 1; /** always 0 */
+    uint8_t MASH        : 2; /** 3 for on and 1 for off */
+    uint16_t            : 13; /** always 0 */
+    uint8_t PASSWD      : 8; /** always 0x5a */
 };
 
+/** @brief set source of transmit and turn on transmit
+ *  @param source - source of transmit is either PLL or clock
+ *  @param divisor - set the divisor of source
+ *  @return Void.
+ */
 void txon(
   const source_t & source,
   const double & divisor
@@ -116,12 +149,13 @@ void txon(
     //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 4;  //10mA +8.2dBm
     //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 5;  //12mA +9.2dBm
     //ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 6;  //14mA +10.0dBm
+/** set gpio drive strength ot 16 mA */
     ACCESS(PADS_GPIO_0_27) = 0x5a000018 + 7;  //16mA +10.6dBm
 
     // Set the divider
     //cout << divisor << endl;
     //cout << divisor*pow(2.0,12) << endl;
-    int div_val=(0x5a<<24)+((int)(divisor*pow(2.0,12)));
+    uint32_t div_val=(0x5a<<24)+((uint32_t)(divisor*pow(2.0,12))&0x00FFFFFF);
     //cout << hex << div_val << dec << endl;
     ACCESS(CM_GP0DIV) = div_val;
 
@@ -134,27 +168,38 @@ void txon(
     } else {
       setupword=setupword1;
     }
-    ACCESS(CM_GP0CTL) = *((int*)&setupword);
+    ACCESS(CM_GP0CTL) = *((uint32_t*)&setupword);
 }
 
+/** @brief write setup word out to CM_GP0CTL to return source to PLL, and stop transmit
+ *  @return Void.
+ */
 void txoff()
 {
     struct GPCTL setupword = {6/*SRC*/, 0, 0, 0, 0, 1,0x5a};
-    ACCESS(CM_GP0CTL) = *((int*)&setupword);
+    ACCESS(CM_GP0CTL) = *((uint32_t*)&setupword);
 }
 
+/** @brief Exit the program
+ *  @param h - unused 
+ *  @return Void.
+ */
 void handSig(const int h) {
   exit(0);
 }
 
-//
-// Set up a memory regions to access GPIO
-//
+/** @brief Set up a memory regions to access GPIO. gpio is a pointer to a file that is shared with mailbox.cpp and thereby with wspr.
+ *  @param mem_fd - return the file descriptor 
+ *  @param gpio_mem - return the pointer to a block of page alligned memorya
+ *  @param gpio_map - return the pointer to the file shared with mailbox
+ *  @param gpio - pointer to the file gpio_map
+ *  @return Void.
+ */
 void setup_io(
   int & mem_fd,
-  char * & gpio_mem,
-  char * & gpio_map,
-  volatile unsigned * & gpio
+  uint8_t * & gpio_mem,
+  uint8_t * & gpio_map,
+  volatile uint32_t * & gpio
 ) {
     /* open /dev/mem */
     if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
@@ -165,17 +210,17 @@ void setup_io(
     /* mmap GPIO */
 
     // Allocate MAP block
-    if ((gpio_mem = (char *)malloc(BLOCK_SIZE + (PAGE_SIZE-1))) == NULL) {
+    if ((gpio_mem = (uint8_t *)malloc(BLOCK_SIZE + (PAGE_SIZE-1))) == NULL) {
         printf("allocation error \n");
         exit (-1);
     }
 
     // Make sure pointer is on 4K boundary
-    if ((unsigned long)gpio_mem % PAGE_SIZE)
-        gpio_mem += PAGE_SIZE - ((unsigned long)gpio_mem % PAGE_SIZE);
+    if ((uint32_t)gpio_mem % PAGE_SIZE)
+        gpio_mem += PAGE_SIZE - ((uint32_t)gpio_mem % PAGE_SIZE);
 
     // Now map it
-    gpio_map = (char *)mmap(
+    gpio_map = (uint8_t *)mmap(
                    gpio_mem,
                    BLOCK_SIZE,
                    PROT_READ|PROT_WRITE,
@@ -184,20 +229,24 @@ void setup_io(
                    GPIO_BASE
                );
 
-    if ((long)gpio_map < 0) {
-        printf("mmap error %ld\n", (long int)gpio_map);
+    if ((uint32_t)gpio_map < 0) {
+        printf("mmap error %d\n", (uint32_t)gpio_map);
         exit (-1);
     }
 
     // Always use volatile pointer!
-    gpio = (volatile unsigned *)gpio_map;
+    gpio = (volatile uint32_t *)gpio_map;
 
 }
 
+/** @brief switch gpios 7 through 11 to be outputs by using the INP_GPIO command
+ *  @param gpio - base address of the GPIO register block used in INP_GPIO 
+ *  @return Void.
+ */
 void setup_gpios(
-  volatile unsigned * & gpio
+  volatile uint32_t * & gpio
 ){
-   int g;
+   uint32_t g;
    // Switch GPIO 7..11 to output mode
 
     /************************************************************************\
@@ -215,6 +264,9 @@ void setup_gpios(
 
 }
 
+/** @brief print usage called from parse_commandline
+ *  @return Void.
+ */
 void print_usage() {
   cout << "Usage:" << endl;
   cout << "  gpioclk [source options] [frequency options]" << endl;
@@ -233,6 +285,16 @@ void print_usage() {
   cout << "and the fractional portion is also 12 bits wide." << endl;
 }
 
+/** @brief parse the command line arguments.  select either PLL or clock as the source and select either frequency or divisor.
+ *  @param argc - count of arguments
+ *  @param argv - list of arguments
+ *  @param source - return either PLL or clock
+ *  @param freq_specified - return true if frequency 
+ *  @param freq - return the frequency
+ *  @param div_specified - return true if divisor 
+ *  @param divisor - return the divisor
+ *  @return Void.
+ */
 void parse_commandline(
   // Inputs
   const int & argc,
@@ -346,6 +408,11 @@ void parse_commandline(
   }
 }
 
+/** @brief main entry point of program. Includes a forever loop
+ *  @param argc - count of arguments
+ *  @param argv - list of arguments
+ *  @return int - exit value
+ */
 int main(const int argc, char * const argv[]) {
 #ifdef RPI1
   std::cout << "Detected Raspberry Pi version 1" << std::endl;
@@ -396,11 +463,11 @@ int main(const int argc, char * const argv[]) {
 
   // Initial configuration
   int mem_fd;
-  char *gpio_mem, *gpio_map;
-  volatile unsigned *gpio = NULL;
+  uint8_t *gpio_mem, *gpio_map;
+  volatile uint32_t *gpio = NULL;
   setup_io(mem_fd,gpio_mem,gpio_map,gpio);
   setup_gpios(gpio);
-  allof7e = (unsigned *)mmap(
+  allof7e = (void *)mmap(
               NULL,
               0x002FFFFF,  //len
               PROT_READ|PROT_WRITE,
@@ -408,7 +475,7 @@ int main(const int argc, char * const argv[]) {
               mem_fd,
               BCM2708_PERI_BASE //base
           );
-  if ((long int)allof7e==-1) {
+  if (allof7e == MAP_FAILED) {
     cerr << "Error: mmap error!" << endl;
     ABORT(-1);
   }
