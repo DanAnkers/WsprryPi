@@ -47,7 +47,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  * Function:
  *     mapmem
  */
-void *mapmem(uint32_t base, uint32_t size)
+uint8_t *mapmem(uint32_t base, uint32_t size)
 {
     int mem_fd;
     uint32_t offset = base % PAGE_SIZE;
@@ -57,7 +57,7 @@ void *mapmem(uint32_t base, uint32_t size)
         printf("can't open /dev/mem\nThis program should be run as root. Try prefixing command with: sudo\n");
         exit (-1);
     }
-    void *mem = mmap(
+    uint8_t *mem = (uint8_t *) mmap(
         0,
         size,
         PROT_READ|PROT_WRITE,
@@ -72,22 +72,20 @@ void *mapmem(uint32_t base, uint32_t size)
         exit (-1);
     }
     close(mem_fd);
-    return (char *)mem + offset;
+    return (uint8_t *)mem + offset;
 }
 
 /*-------------------------------------------------------------------
  * Function:
  *     unmapmem
  */
-void *unmapmem(void *addr, uint32_t size)
+void unmapmem(uint8_t *addr, uint32_t size)
 {
     int s = munmap(addr, size);
     if (s != 0) {
         printf("munmap error %d\n", s);
         exit (-1);
     }
-
-    return NULL;
 }
 
 /*

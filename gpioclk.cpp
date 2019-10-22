@@ -117,15 +117,15 @@ typedef enum {PLLD,XTAL} source_t;
 
 /** the bit structure of the GPCTL register */
 struct GPCTL {
-    uint8_t SRC         : 4; /** source of clock is PLLD or XTAL */
-    uint8_t ENAB        : 1; /** enable transmit */
-    uint8_t KILL        : 1; /** always 0 */
-    uint8_t             : 1; /** always 0 */
-    uint8_t BUSY        : 1; /** always 0 */
-    uint8_t FLIP        : 1; /** always 0 */
-    uint8_t MASH        : 2; /** 3 for on and 1 for off */
-    uint16_t            : 13; /** always 0 */
-    uint8_t PASSWD      : 8; /** always 0x5a */
+    char SRC         : 4; /** source of clock is PLLD or XTAL */
+    char ENAB        : 1; /** enable transmit */
+    char KILL        : 1; /** always 0 */
+    char             : 1; /** always 0 */
+    char BUSY        : 1; /** always 0 */
+    char FLIP        : 1; /** always 0 */
+    char MASH        : 2; /** 3 for on and 1 for off */
+    unsigned int     : 13; /** always 0 */
+    char PASSWD      : 8; /** always 0x5a */
 };
 
 /** @brief set source of transmit and turn on transmit

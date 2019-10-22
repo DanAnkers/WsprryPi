@@ -161,7 +161,7 @@ extern "C" {
  *  This must be declared global so that it can be called by the atexit
  * function.
  */
-volatile void *peri_base_virt = NULL;
+volatile uint32_t *peri_base_virt = NULL;
 
 /** Given an address in the bus address space of the peripherals, this
  *  macro calculates the appropriate virtual address to use to access
@@ -213,14 +213,14 @@ struct GPCTL {
 
 /** Structure used to tell the DMA engine what to do */
 struct CB {
-    volatile unsigned int TI;
-    volatile unsigned int SOURCE_AD;
-    volatile unsigned int DEST_AD;
-    volatile unsigned int TXFR_LEN;
-    volatile unsigned int STRIDE;
-    volatile unsigned int NEXTCONBK;
-    volatile unsigned int RES1;
-    volatile unsigned int RES2;
+    volatile uint32_t TI;
+    volatile uint32_t SOURCE_AD;
+    volatile uint32_t DEST_AD;
+    volatile uint32_t TXFR_LEN;
+    volatile uint32_t STRIDE;
+    volatile uint32_t NEXTCONBK;
+    volatile uint32_t RES1;
+    volatile uint32_t RES2;
 };
 
 /**  DMA engine status registers */
@@ -247,7 +247,7 @@ static struct {
   int handle;                      /** From mbox_open() */
   uint32_t mem_ref = 0;            /** From mem_alloc() */
   uint32_t bus_addr;               /** From mem_lock() */
-  void *virt_addr = NULL; /** From mapmem() */ //ha7ilm: originally uint8_t
+  uint8_t *virt_addr = NULL; /** From mapmem() */ //ha7ilm: originally uint8_t
   uint32_t pool_size;  /** the number of pages allocated */
   uint32_t pool_cnt;   /** the count for which page we are on */
 } mbox;
@@ -264,7 +264,7 @@ void allocMemPool(uint32_t numpages) {
   mbox.bus_addr = mem_lock(mbox.handle, mbox.mem_ref);
   // Conert the bus address to a physical address and map this to virtual
   // (aka user) space.
-  mbox.virt_addr = (void *)mapmem((uint32_t)BUS_TO_PHYS(mbox.bus_addr), (uint32_t)4096*numpages);
+  mbox.virt_addr = (uint8_t *)mapmem((uint32_t)BUS_TO_PHYS(mbox.bus_addr), (uint32_t)4096*numpages);
   // The number of pages in the pool. Never changes!
   mbox.pool_size=numpages;
   // How many of the created pages have actually been used.
@@ -284,7 +284,7 @@ void getRealMemPageFromPool(void ** vAddr, void **bAddr) {
     ABORT(-1);
   }
   uint32_t offset = mbox.pool_cnt*4096;
-  *vAddr = (void*)(((uint32_t)mbox.virt_addr) + offset);
+  *vAddr = (uint8_t *)(((uint32_t)mbox.virt_addr) + offset);
   *bAddr = (void*)(((uint32_t)mbox.bus_addr) + offset);
   //printf("getRealMemoryPageFromPool bus_addr=%x virt_addr=%x\n", (unsigned)*pAddr,(unsigned)*vAddr);
   mbox.pool_cnt++;
@@ -591,9 +591,9 @@ void setupDMA(
     struct CB* instr0= (struct CB*)instrPage.v;
     int i;
     for (i=0; i<(signed)(4096/sizeof(struct CB)); i++) {
-      instrs[instrCnt].v = (void*)((long int)instrPage.v + sizeof(struct CB)*i);
-      instrs[instrCnt].b = (void*)((long int)instrPage.b + sizeof(struct CB)*i);
-      instr0->SOURCE_AD = (unsigned long int)constPage.b+2048;
+      instrs[instrCnt].v = (void*)((int32_t)instrPage.v + sizeof(struct CB)*i);
+      instrs[instrCnt].b = (void*)((int32_t)instrPage.b + sizeof(struct CB)*i);
+      instr0->SOURCE_AD = (uint32_t)constPage.b+2048;
       instr0->DEST_AD = PWM_BUS_BASE+0x18 /* FIF1 */;
       instr0->TXFR_LEN = 4;
       instr0->STRIDE = 0;
@@ -972,7 +972,7 @@ void parse_commandline(
   }
 
   // Parse the non-option parameters
-  unsigned int n_free_args=0;
+  uint32_t n_free_args=0;
   while (optind<argc) {
     // Check for callsign, locator, tx_power
     if (n_free_args==0) {
@@ -1076,7 +1076,7 @@ void parse_commandline(
     std::cout << "  Power:    " << tx_power << " dBm" << std::endl;
     std::cout << "Requested TX frequencies:" << std::endl;
     std::stringstream temp;
-    for (unsigned int t=0;t<center_freq_set.size();t++) {
+    for (uint32_t t=0;t<center_freq_set.size();t++) {
       temp << std::setprecision(6) << std::fixed;
       temp << "  " << center_freq_set[t]/1e6 << " MHz" << std::endl;
     }
@@ -1239,7 +1239,7 @@ void setup_peri_base_virt() {
     std::cerr << "Error: can't open /dev/mem" << std::endl;
     ABORT (-1);
   }
-  peri_base_virt = (void *)mmap(
+  peri_base_virt = (uint32_t *)mmap(
     NULL,
     0x01000000,  //len
     PROT_READ|PROT_WRITE,

@@ -88,15 +88,15 @@ uint32_t mem_unlock(int file_desc, uint32_t handle);
 /** @brief open a read/write/sync file at the start of page where base is located and make the file size
  *  @param base - the base address of the file
  *  @param size - the size of the file
- *  @return (void *) - pointer to the spot in memory at the address base
+ *  @return (uint8_t *) - pointer to the spot in memory at the address base
  */
-void *mapmem(uint32_t base, uint32_t size);
+uint8_t *mapmem(uint32_t base, uint32_t size);
 /** @brief call munmap on *addr and return NULL. Call exit if it fails
  *  @param addr - the address to pass to munmap
  *  @param size - the size to pass to munmap
- *  @return (void *) - always NULL
+ *  @return Void.
  */
-void *unmapmem(void *addr, uint32_t size);
+void unmapmem(uint8_t *addr, uint32_t size);
 
 /** @brief write an array out to mbox_proptery.
  *  @param file_desc - the number returned by mbox_open
