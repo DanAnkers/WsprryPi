@@ -170,7 +170,7 @@ volatile uint32_t *peri_base_virt = NULL;
  *  the peripheral address space. Then, this offset is added to peri_base_virt
  *  Which is the base address of the peripherals, in virtual address space.
  */
-#define ACCESS_BUS_ADDR(buss_addr) *(volatile uint32_t*)((uint32_t)peri_base_virt+(buss_addr)-0x7e000000)
+#define ACCESS_BUS_ADDR(buss_addr) *(volatile uint32_t*)((uintptr_t)peri_base_virt+(buss_addr)-0x7e000000)
 /** Given a bus address in the peripheral address space, set bit */
 #define SETBIT_BUS_ADDR(base, bit) ACCESS_BUS_ADDR(base) |= 1<<bit
 /** Given a bus address in the peripheral address space, clear a bit. */
@@ -284,8 +284,8 @@ void getRealMemPageFromPool(void ** vAddr, void **bAddr) {
     ABORT(-1);
   }
   uint32_t offset = mbox.pool_cnt*4096;
-  *vAddr = (uint8_t *)(((uint32_t)mbox.virt_addr) + offset);
-  *bAddr = (void*)(((uint32_t)mbox.bus_addr) + offset);
+  *vAddr = (uint8_t *)(((uintptr_t)mbox.virt_addr) + offset);
+  *bAddr = (void *)(((uintptr_t)mbox.bus_addr) + offset);
   //printf("getRealMemoryPageFromPool bus_addr=%x virt_addr=%x\n", (unsigned)*pAddr,(unsigned)*vAddr);
   mbox.pool_cnt++;
 }
@@ -443,24 +443,24 @@ void txSym(
     // Configure the transmission for this iteration
     // Set GPIO pin to transmit f0
     bufPtr++;
-    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (uint32_t)(instrs[bufPtr].b)) {
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (uintptr_t)(instrs[bufPtr].b)) {
         usleep(100);
     }
-    ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (int32_t)constPage.b + f0_idx*4;
+    ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (uintptr_t)constPage.b + f0_idx*4;
 
     // Wait for n_f0 PWM clocks
     bufPtr++;
-    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (uint32_t)(instrs[bufPtr].b)) usleep(100);
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (uintptr_t)(instrs[bufPtr].b)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = n_f0;
 
     // Set GPIO pin to transmit f1
     bufPtr++;
-    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (uint32_t)(instrs[bufPtr].b)) usleep(100);
-    ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (int32_t)constPage.b + f1_idx*4;
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (uintptr_t)(instrs[bufPtr].b)) usleep(100);
+    ((struct CB*)(instrs[bufPtr].v))->SOURCE_AD = (uintptr_t)constPage.b + f1_idx*4;
 
     // Wait for n_f1 PWM clocks
     bufPtr=(bufPtr+1) % (1024);
-    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (uint32_t)(instrs[bufPtr].b)) usleep(100);
+    while( ACCESS_BUS_ADDR(DMA_BUS_BASE + 0x04 /* CurBlock*/) ==  (uintptr_t)(instrs[bufPtr].b)) usleep(100);
     ((struct CB*)(instrs[bufPtr].v))->TXFR_LEN = n_f1;
 
     // Update counters
@@ -591,9 +591,9 @@ void setupDMA(
     struct CB* instr0= (struct CB*)instrPage.v;
     int i;
     for (i=0; i<(signed)(4096/sizeof(struct CB)); i++) {
-      instrs[instrCnt].v = (void*)((int32_t)instrPage.v + sizeof(struct CB)*i);
-      instrs[instrCnt].b = (void*)((int32_t)instrPage.b + sizeof(struct CB)*i);
-      instr0->SOURCE_AD = (uint32_t)constPage.b+2048;
+      instrs[instrCnt].v = (void*)((uintptr_t)instrPage.v + sizeof(struct CB)*i);
+      instrs[instrCnt].b = (void*)((uintptr_t)instrPage.b + sizeof(struct CB)*i);
+      instr0->SOURCE_AD = (uintptr_t)constPage.b+2048;
       instr0->DEST_AD = PWM_BUS_BASE+0x18 /* FIF1 */;
       instr0->TXFR_LEN = 4;
       instr0->STRIDE = 0;
@@ -642,7 +642,7 @@ void setupDMA(
   DMA0->CS =1<<31;  // reset
   DMA0->CONBLK_AD=0;
   DMA0->TI=0;
-  DMA0->CONBLK_AD = (uint32_t)(instrPage.b);
+  DMA0->CONBLK_AD = (uintptr_t)(instrPage.b);
   DMA0->CS =(1<<0)|(255 <<16);  // enable bit = 0, clear end flag = 1, prio=19-16
 }
 

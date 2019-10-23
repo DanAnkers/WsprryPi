@@ -74,7 +74,7 @@ using namespace std;
 // This must be declared global so that it can be called by the atexit
 // function.
 /** The pointer to the base of the GPIO addresses */
-volatile void *allof7e = NULL;
+volatile uint32_t *allof7e = NULL;
 
 // GPIO setup macros. Always use INP_GPIO(x) before using OUT_GPIO(x) or SET_GPIO_ALT(x,y)
 /** clear bits for this GPIO */
@@ -92,7 +92,7 @@ volatile void *allof7e = NULL;
 #define GPIO_GET *(gpio+13) 
 
 /** pointer to an address in the GPIO block of memory */
-#define ACCESS(base) *(volatile uint32_t*)((uint32_t)allof7e+base-0x7e000000)
+#define ACCESS(base) *(volatile uint32_t*)((uintptr_t)allof7e+base-0x7e000000)
 /** set a bit in the GPIO register at address base */
 #define SETBIT(base, bit) ACCESS(base) |= 1<<bit
 /** clear a bit in the GPIO register at address base */
@@ -216,8 +216,8 @@ void setup_io(
     }
 
     // Make sure pointer is on 4K boundary
-    if ((uint32_t)gpio_mem % PAGE_SIZE)
-        gpio_mem += PAGE_SIZE - ((uint32_t)gpio_mem % PAGE_SIZE);
+    if ((uintptr_t)gpio_mem % PAGE_SIZE)
+        gpio_mem += PAGE_SIZE - ((uintptr_t)gpio_mem % PAGE_SIZE);
 
     // Now map it
     gpio_map = (uint8_t *)mmap(
@@ -229,8 +229,8 @@ void setup_io(
                    GPIO_BASE
                );
 
-    if ((uint32_t)gpio_map < 0) {
-        printf("mmap error %d\n", (uint32_t)gpio_map);
+    if (gpio_map == MAP_FAILED) {
+        printf("mmap error %d\n", (uintptr_t)gpio_map);
         exit (-1);
     }
 
@@ -467,7 +467,7 @@ int main(const int argc, char * const argv[]) {
   volatile uint32_t *gpio = NULL;
   setup_io(mem_fd,gpio_mem,gpio_map,gpio);
   setup_gpios(gpio);
-  allof7e = (void *)mmap(
+  allof7e = (uint32_t *)mmap(
               NULL,
               0x002FFFFF,  //len
               PROT_READ|PROT_WRITE,
