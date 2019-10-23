@@ -230,7 +230,7 @@ void setup_io(
                );
 
     if (gpio_map == MAP_FAILED) {
-        printf("mmap error %d\n", (uintptr_t)gpio_map);
+        printf("mmap error. MAP_FAILED.\n");
         exit (-1);
     }
 
