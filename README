@@ -1,122 +1,259 @@
- Raspberry Pi bareback LF/MF/HF/VHF WSPR transmitter  <pe1nnz@amsat.org>
+Raspberry Pi bareback LF/MF/HF/VHF WSPR transmitter
 
- Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO
- port to Antanna (and LPF), operates on LF, MF, HF and VHF bands from
- 0 to 250 MHz.
+Makes a very simple WSPR beacon from your RasberryPi by connecting GPIO
+port to Antenna (and LPF), operates on LF, MF, HF and VHF bands from
+0 to 250 MHz.
 
-Credits:
-  Credits goes to Oliver Mattos and Oskar Weigl who implemented PiFM [1]
-  based on the idea of exploiting RPi DPLL as FM transmitter. Dan MD1CLV
-  combined this effort with WSPR encoding algorithm from F8CHK, resulting
-  in WsprryPi a WSPR beacon for LF and MF bands. Guido PE1NNZ extended
-  this effort with DMA based PWM modulation of fractional divider that was
-  part of PiFM, allowing to operate the WSPR beacon also on HF and VHF bands.
-  In addition time-synchronisation and double amount of power output was
-  implemented.
+Compatible with the original Raspberry Pi, the Raspberry Pi 2/3, and
+the Pi Zero.
 
-  [1] PiFM code from http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
+!!!!!!
+2017-04-21
+Do note that some users have been reporting lockups with recent OS versions.
+I have not been able to reproduce the problems on my RPI1 and RPI3 running
+the latest Jessie-Lite.
+https://github.com/JamesP6000/WsprryPi/issues/6#issuecomment-296233932
+!!!!!!
 
-To use:
+******
+Installation / update:
+******
+  Download and compile code:
+    sudo apt-get install git
+    git clone https://github.com/JamesP6000/WsprryPi.git
+    cd WsprryPi
+    make
+
+  Install to /usr/local/bin:
+    sudo make install
+
+  Uninstall:
+    sudo make uninstall
+
+******
+Usage: (WSPR --help output):
+******
+
+  If running from the console, recent versions of Jessie cause WsprryPi to
+  crash when the console screen blanks. The symptom is that WsppryPi works
+  for several transmissions and then crashes. The fix is to add "consoleblank=0"
+  to /boot/cmdline.txt.
+  https://github.com/JamesP6000/WsprryPi/issues/10
+
+  Usage:
+    wspr [options] callsign locator tx_pwr_dBm f1 <f2> <f3> ...
+      OR
+    wspr [options] --test-tone f
+
+  Options:
+    -h --help
+      Print out this help screen.
+    -p --ppm ppm
+      Known PPM correction to 19.2MHz RPi nominal crystal frequency.
+    -s --self-calibration
+      Check NTP before every transmission to obtain the PPM error of the
+      crystal (default setting!).
+    -f --free-running
+      Do not use NTP to correct frequency error of RPi crystal.
+    -r --repeat
+      Repeatedly, and in order, transmit on all the specified command line
+      freqs.
+    -x --terminate <n>
+      Terminate after n transmissions have been completed.
+    -o --offset
+      Add a random frequency offset to each transmission:
+        +/- 80 Hz for WSPR
+        +/- 8 Hz for WSPR-15
+    -t --test-tone freq
+      Simply output a test tone at the specified frequency. Only used
+      for debugging and to verify calibration.
+    -n --no-delay
+      Transmit immediately, do not wait for a WSPR TX window. Used
+      for testing only.
+
+  Frequencies can be specified either as an absolute TX carrier frequency, or
+  using one of the following strings. If a string is used, the transmission
+  will happen in the middle of the WSPR region of the selected band.
+    LF LF-15 MF MF-15 160m 160m-15 80m 60m 40m 30m 20m 17m 15m 12m 10m 6m 4m 2m
+  <B>-15 indicates the WSPR-15 region of band <B>.
+
+  Transmission gaps can be created by specifying a TX frequency of 0
+
+  Note that 'callsign', 'locator', and 'tx_power_dBm' are simply used to fill
+  in the appropriate fields of the WSPR message. Normally, tx_power_dBm should
+  be 10, representing the signal power coming out of the Pi. Set this value
+  appropriately if you are using an external amplifier.
+
+******
+Radio licensing / RF:
+******
   In order to transmit legally, a HAM Radio License is REQUIRED for running
   this experiment. The output is a square wave so a low pass filter is REQUIRED.
   Connect a low-pass filter (via decoupling C) to GPIO4 (GPCLK0) and Ground pin
   of your Raspberry Pi, connect an antenna to the LPF. The GPIO4 and GND pins
   are found on header P1 pin 7 and 9 respectively, the pin closest to P1 label
-  is pin 1 and its 3rd and 4th neighbour is pin 7 and 9 respectively, see this
-  link for pin layout: http://elinux.org/RPi_Low-level_peripherals Examples of
-  low-pass filters can be found here: http://www.gqrp.com/harmonic_filters.pdf
+  is pin 1 and its 3rd and 4th neighbour is pin 7 and 9 respectively. See this
+  link for pin layout: http://elinux.org/RPi_Low-level_peripherals
+  
+  Examples of low-pass filters can be found here:
+    http://www.gqrp.com/harmonic_filters.pdf
+  TAPR makes a very nice shield for the Raspberry Pi that is pre-assembled,
+  performs the appropriate filtering for the 20m band, and also increases
+  the power output to 20dBm! Just connect your antenna and you're good-to-go!
+    https://www.tapr.org/kits_20M-wspr-pi.html
+
   The expected power output is 10mW (+10dBm) in a 50 Ohm load. This looks
   neglible, but when connected to a simple dipole antenna this may result in
   reception reports ranging up to several thousands of kilometers.
-  Example of low-pass filters here: http://www.gqrp.com/harmonic_filters.pdf
+
   As the Raspberry Pi does not attenuate ripple and noise components from the
   5V USB power supply, it is RECOMMENDED to use a regulated supply that has
   sufficient ripple supression. Supply ripple might be seen as mixing products
   products centered around the transmit carrier typically at 100/120Hz.
 
-  This software is using system time to determine the start of a WSPR
-  transmissions, so keep the system time synchronised within 1sec precision,
-  i.e. use NTP network time synchronisation or set time manually with date
-  command. A WSPR broadcast starts on even minute and takes 2 minutes for WSPR-2
-  or starts at :00,:15,:30,:45 and takes 15 minutes for WSPR-15. It contains
-  a callsign, 4-digit Maidenhead square locator and transmission power.
-  Reception reports can be viewed on Weak Signal Propagation Reporter Network
-  at: http://wsprnet.org/drupal/wsprnet/spots
-
-  Frequency calibration is REQUIRED to ensure that the WSPR-2 transmission occurs
-  within the 200 Hz narrow band. The reference crystal on your RPi might have
-  an frequency error (which in addition is temp. dependent -1.3Hz/degC @10MHz).
-  To calibrate, the frequency might be manually corrected on the command line
-  or by changing the F_XTAL value in the code. A practical way to calibrate
-  is to tune the transmitter on the same frequency of a medium wave AM broadcast
-  station; keep tuning until zero beat (the constant audio tone disappears when
-  the transmitter is exactly on the same frequency as the broadcast station),
-  and determine the frequency difference with the broadcast station. This is
-  the frequency error that can be applied for correction while tuning on a WSPR
-  frequency. Do not overclock your RPi as it may make the clock unreliable due to 
-  a dynamic clocking feature.
-
   DO NOT expose GPIO4 to voltages or currents that are above the specified
   Absolute Maximum limits. GPIO4 outputs a digital clock in 3V3 logic, with a
-  maximum current of 16mA. As there is no current protection available and
-  a DC component of 1.6V, DO NOT short-circuit or place a resistive (dummy) load
+  maximum current of 16mA. As there is no current protection available and a DC
+  component of 1.6V, DO NOT short-circuit or place a resistive (dummy) load
   straight on the GPIO4 pin, as it may draw too much current. Instead, use a
-  decoupling capacitor to remove DC component when connecting the output
-  dummy loads, transformers, antennas, etc. DO NOT expose GPIO4 to electro-
-  static voltages or voltages exceeding the 0 to 3.3V logic range; connecting an 
-  antenna directly to GPIO4 may damage your RPi due to transient voltages such as 
-  lightning or static buildup as well as RF from other transmitters operating into 
-  nearby antennas. Therefore it is RECOMMENDED to add some form of isolation, e.g. 
-  by using a RF transformer, a simple buffer/driver/PA stage, two schottky small 
-  signal diodes back to back.
+  decoupling capacitor to remove DC component when connecting the output dummy
+  loads, transformers, antennas, etc. DO NOT expose GPIO4 to electro- static
+  voltages or voltages exceeding the 0 to 3.3V logic range; connecting an
+  antenna directly to GPIO4 may damage your RPi due to transient voltages such
+  as lightning or static buildup as well as RF from other transmitters
+  operating into nearby antennas. Therefore it is RECOMMENDED to add some form
+  of isolation, e.g. by using a RF transformer, a simple buffer/driver/PA
+  stage, two schottky small signal diodes back to back.
 
-Installation / update:
-  Open a terminal and execute the following commands:
-   sudo apt-get install git
-   rm -rf WsprryPi
-   git clone https://github.com/threeme3/WsprryPi.git
-   cd WsprryPi
+******
+TX Timing:
+******
+  This software is using system time to determine the start of WSPR
+  transmissions, so keep the system time synchronised within 1sec precision,
+  i.e. use NTP network time synchronisation or set time manually with date
+  command. A WSPR broadcast starts on an even minute and takes 2 minutes for
+  WSPR-2 or starts at :00,:15,:30,:45 and takes 15 minutes for WSPR-15. It
+  contains a callsign, 4-digit Maidenhead square locator and transmission
+  power.  Reception reports can be viewed on Weak Signal Propagation Reporter
+  Network at: http://wsprnet.org/drupal/wsprnet/spots
 
-Usage:
-  sudo ./wspr <[prefix]/callsign[/suffix]> <locator> <power in dBm> [<frequency in Hz> ...]
-        e.g.: sudo ./wspr PA/K1JT JO21 10 7040074 0 0 10140174 0 0
-        where 0 frequency represents a interval for which TX is disabled,
-        wspr-2 or wspr-15 mode selection based on specified frequency.
+******
+Calibration:
+******
+  As of 2017-02, NTP calibration is enabled by default and produces a
+  frequency error of about 0.1 PPM after the Pi has temperature stabilized
+  and the NTP loop has converged.
 
-  WSPR is used on the following frequencies (local restriction may apply):
-     LF   137400 - 137600
-          137600 - 137625 (WSPR-15)
-     MF   475600 - 475800
-          475800 - 475825 (WSPR-15)
-    160m  1838000 - 1838200
-          1838200 - 1838225 (WSPR-15)
-     80m  3594000 - 3594200
-     60m  5288600 - 5288800
-     40m  7040000 - 7040200
-     30m  10140100 - 10140300
-     20m  14097000 - 14097200
-     17m  18106000 - 18106200
-     15m  21096000 - 21096200
-     12m  24926000 - 24926200
-     10m  28126000 - 28126200
-      6m  50294400 - 50294600
-      4m  70092400 - 70092600
-      2m  144490400 -144490600
+  Frequency calibration is REQUIRED to ensure that the WSPR-2 transmission
+  occurs within the narrow 200 Hz band. The reference crystal on your RPi might
+  have an frequency error (which in addition is temp. dependent -1.3Hz/degC
+  @10MHz). To calibrate, the frequency might be manually corrected on the
+  command line or a PPM correction could be specified on the command line.
 
-Compile:
-  sudo apt-get install gcc
-  gcc -lm -std=c99 wspr.c -owspr
+  NTP calibration:
+  NTP automatically tracks and calculates a PPM frequency correction. If you
+  are running NTP on your Pi, you can use the --self-calibration option to
+  have this program querry NTP for the latest frequency correction before
+  each WSPR transmission. Some residual frequency error may still be present
+  due to delays in the NTP measurement loop and this method works best if your
+  Pi has been on for a long time, the crystal's temperature has stabilized,
+  and the NTP control loop has converged.
 
-Issues:
-  Two users were reporting that the program never stops transmitting, even
-  when intervals for disabled tx are programmed. The problem was in both
-  cases fixed by flashing a new image on the SD card with a freshly downloaded 
-  image: 2013-02-09-wheezy-raspbian.zip. No apt-get upgrade or firmware
-  upgrade was performed. After this WsprryPi TX was running successfully. 
+  AM calibration:
+  A practical way to calibrate is to tune the transmitter on the same frequency
+  of a medium wave AM broadcast station; keep tuning until zero beat (the
+  constant audio tone disappears when the transmitter is exactly on the same
+  frequency as the broadcast station), and determine the frequency difference
+  with the broadcast station. This is the frequency error that can be applied
+  for correction while tuning on a WSPR frequency.
 
-  One user reported his RPi died while in WsprryPi service caused by excessive 
-  RF voltage (90V) on GPIO4 created by a 100 watts AM transmitter 50ft away from 
-  the antenna. After the damage exessive current was consumed by RPi (1.1A from 
-  5V supply), caused by short-circuiting in the 3.3V logic of the BCM2835 SOC.
-  On his replacement RPi, he is planning to add galvanic isolation and buffering.
+  Suppose your local AM radio station is at 780kHz. Use the --test-tone option
+  to produce different tones around 780kHz (eg 780100 Hz) until you can
+  successfully zero beat the AM station. If the zero beat tone specified on the
+  command line is F, calculate the PPM correction required as:
+  ppm=(F/780000-1)*1e6 In the future, specify this value as the argument to the
+  --ppm option on the comman line. You can verify that the ppm value has been
+  set correction by specifying --test-tone 780000 --ppm <ppm> on the command
+  line and confirming that the Pi is still zero beating the AM station.
+
+******
+PWM Peripheral:
+******
+  The code uses the RPi PWM peripheral to time the frequency transitions
+  of the output clock. This peripheral is also used by the RPi sound system
+  and hence any sound events that occur during a WSPR transmission will
+  interfere with WSPR transmissions. Sound can be permanently disabled
+  by editing /etc/modules and commenting out the snd-bcm2835 device.
+
+******
+Example usage:
+******
+  Brief help screen
+    ./wspr --help
+
+  Transmit a constant test tone at 780 kHz.
+    sudo ./wspr --test-tone 780e3
+
+  Using callsign N9NNN, locator EM10, and TX power 33 dBm, transmit a single
+  WSPR transmission on the 20m band using NTP based frequency offset
+  calibration.
+    sudo ./wspr N9NNN EM10 33 20m
+
+  The same as above, but without NTP calibration:
+    sudo ./wspr --free-running N9NNN EM10 33 20m
+
+  Transmit a WSPR transmission slightly off-center on 30m every 10 minutes for
+  a total of 7 transmissions, and using a fixed PPM correction value.
+    sudo ./wspr --repeat --terminate 7 --ppm 43.17 N9NNN EM10 33 10140210 0 0 0 0
+
+  Transmit repeatedly on 40m, use NTP based frequency offset calibration,
+  and add a random frequency offset to each transmission to minimize collisions
+  with other transmitters.
+    sudo ./wspr --repeat --offset --self-calibration N9NNN EM10 33 40m
+
+******
+Reference documentation:
+******
+  http://www.raspberrypi.org/wp-content/uploads/2012/02/BCM2835-ARM-Peripherals.pdf
+  http://www.scribd.com/doc/127599939/BCM2835-Audio-clocks
+  http://www.scribd.com/doc/101830961/GPIO-Pads-Control2
+  https://github.com/mgottschlag/vctools/blob/master/vcdb/cm.yaml
+  https://www.kernel.org/doc/Documentation/vm/pagemap.txt
+
+******
+Credits:
+******
+  Credits goes to Oliver Mattos and Oskar Weigl who implemented PiFM [1]
+  based on the idea of exploiting RPi DPLL as FM transmitter.
+
+  Dan MD1CLV combined this effort with WSPR encoding algorithm from F8CHK,
+  resulting in WsprryPi a WSPR beacon for LF and MF bands.
+
+  Guido PE1NNZ <pe1nnz@amsat.org> extended this effort with DMA based PWM
+  modulation of fractional divider that was part of PiFM, allowing to operate
+  the WSPR beacon also on HF and VHF bands.  In addition time-synchronisation
+  and double amount of power output was implemented.
+
+  James Peroulas <james@peroulas.com> added several command line options, a
+  makefile, improved frequency generation precision so as to be able to
+  precisely generate a tone at a fraction of a Hz, and added a self calibration
+  feature where the code attempts to derrive frequency calibration information
+  from an installed NTP deamon.  Furthermore, the TX length of the WSPR symbols
+  is more precise and does not vary based on system load or PWM clock
+  frequency.
+
+  Michael Tatarinov for adding a patch to get PPM info directly from the
+  kernel.
+
+  Retzler András (HA7ILM) for the massive changes that were required to
+  incorporate the mailbox code so that the RPi2 and RPi3 could be supported.
+
+  [1] PiFM code from
+      http://www.icrobotics.co.uk/wiki/index.php/Turning_the_Raspberry_Pi_Into_an_FM_Transmitter
+  [2] Original WSPR Pi transmitter code by Dan:
+      https://github.com/DanAnkers/WsprryPi
+  [3] Fork created by Guido:
+      https://github.com/threeme3/WsprryPi
+  [4] This fork created by James:
+      https://github.com/JamesP6000/WsprryPi
 
